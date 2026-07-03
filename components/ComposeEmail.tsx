@@ -1,15 +1,35 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Send, X, Plus, RefreshCw, CheckCircle, ChevronDown, ChevronUp, Eye, Paperclip, FileText, AlertCircle } from 'lucide-react';
-import { SmtpConfig, EmailRecipient, EmailDraft, SentEmail, EmailTemplate, EmailAttachment } from '@/lib/types';
-import { v4 as uuid } from 'uuid';
+import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
+
+interface EmailRecipient {
+  email: string
+  name?: string
+}
+
+interface EmailTemplate {
+  id: string
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+}
+
+interface SmtpAccount {
+  id: string
+  name: string
+  email: string
+  smtp_host: string
+  smtp_port: number
+  use_tls: boolean
+}
 
 interface Props {
-  smtpConfigs: SmtpConfig[];
-  templates: EmailTemplate[];
-  selectedTemplate: EmailTemplate | null;
-  onEmailSent: (e: SentEmail) => void;
-  onTemplateUsed: () => void;
+  smtpAccounts: SmtpAccount[]
+  templates: EmailTemplate[]
+  organizationId: string
 }
 
 function getMonogram(name: string): string {
@@ -168,11 +188,9 @@ function RecipientInput({ label, recipients, onChange }: {
   );
 }
 
-export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate, onEmailSent, onTemplateUsed }: Props) {
-  const active = smtpConfigs.filter(s => s.active);
-  const def = smtpConfigs.find(s => s.isDefault) || active[0];
-
-  const [smtpId, setSmtpId] = useState(def?.id || '');
+export default function ComposeEmail({ smtpAccounts, templates, organizationId }: Props) {
+  const router = useRouter()
+  const [smtpId, setSmtpId] = useState(smtpAccounts[0]?.id || '');
   const [to, setTo] = useState<EmailRecipient[]>([]);
   const [cc, setCc] = useState<EmailRecipient[]>([]);
   const [bcc, setBcc] = useState<EmailRecipient[]>([]);
@@ -182,96 +200,26 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
   const [showCC, setShowCC] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [loadTemplate, setLoadTemplate] = useState(false);
-  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [bodyType, setBodyType] = useState<'html' | 'text' | 'both'>('html');
   const [bodyText, setBodyText] = useState('');
   
   // Confirmation Modal
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  const smtp = smtpConfigs.find(s => s.id === smtpId);
+  const smtp = smtpAccounts.find(s => s.id === smtpId);
 
-  const totalAttachmentSize = attachments.reduce((sum, att) => sum + att.size, 0);
-  const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB limit
-
+  // Set default SMTP when smtpAccounts loads
   useEffect(() => {
-    if (selectedTemplate) {
-      applyTemplate(selectedTemplate);
-      onTemplateUsed();
+    if (smtpAccounts.length > 0 && !smtpId) {
+      setSmtpId(smtpAccounts[0].id);
     }
-  }, [selectedTemplate]);
-
-  // Set default SMTP when smtpConfigs loads
-  useEffect(() => {
-    if (smtpConfigs.length > 0 && !smtpId) {
-      const activeConfigs = smtpConfigs.filter(s => s.active);
-      const defaultCfg = smtpConfigs.find(s => s.isDefault) || activeConfigs[0];
-      if (defaultCfg) setSmtpId(defaultCfg.id);
-    }
-  }, [smtpConfigs, smtpId]);
-
-  function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploading(true);
-    const newAttachments: EmailAttachment[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      if (file.size > 10 * 1024 * 1024) {
-        setResult({ type: 'error', msg: `File ${file.name} is too large (max 10MB per file)` });
-        continue;
-      }
-
-      if (totalAttachmentSize + file.size > MAX_TOTAL_SIZE) {
-        setResult({ type: 'error', msg: 'Total attachment size exceeds 25MB limit' });
-        break;
-      }
-
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.readAsDataURL(file);
-      });
-
-      const content = await base64Promise;
-      newAttachments.push({
-        filename: file.name,
-        content,
-        contentType: file.type || 'application/octet-stream',
-        size: file.size,
-      });
-    }
-
-    setAttachments([...attachments, ...newAttachments]);
-    setUploading(false);
-    e.target.value = ''; // Reset input
-  }
-
-  function removeAttachment(index: number) {
-    setAttachments(attachments.filter((_, i) => i !== index));
-  }
+  }, [smtpAccounts, smtpId]);
 
   function applyTemplate(t: EmailTemplate) {
     setSubject(t.subject);
-    setBodyHtml(t.bodyHtml);
-    setBodyText(t.bodyText);
+    setBodyHtml(t.body_html);
+    setBodyText(t.body_text);
     setBodyType('html');
     setLoadTemplate(false);
   }
@@ -298,64 +246,64 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
     }
 
     setSending(true);
-    setResult(null);
     setShowConfirmModal(false);
 
     // If all recipients are suppressed, halt send
     if (totalCleanRecipients === 0) {
-      setResult({
-        type: 'error',
-        msg: `Send Aborted: All recipients were automatically excluded due to suppression/unsubscribed tags.`
-      });
+      toast.error('Send Aborted: All recipients were automatically excluded due to suppression/unsubscribed tags.')
       setSending(false);
       return;
     }
 
-    const draft: EmailDraft = {
-      smtpId, 
-      to: cleanTo, 
-      cc: cleanCc, 
-      bcc: cleanBcc, 
-      subject,
-      bodyHtml: bodyType === 'text' ? `<p>${bodyText.replace(/\n/g, '<br>')}</p>` : bodyHtml,
-      bodyText: bodyType === 'html' ? bodyHtml.replace(/<[^>]+>/g, '') : bodyText,
-      replyTo: replyTo || undefined,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    };
+    // Send to first recipient only for now (bulk sending would need queue)
+    const firstRecipient = cleanTo[0];
 
     try {
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ smtp, draft }),
+        body: JSON.stringify({
+          organization_id: organizationId,
+          account_id: smtpId,
+          to_email: firstRecipient.email,
+          to_name: firstRecipient.name,
+          subject,
+          body_html: bodyType === 'text' ? `<p>${bodyText.replace(/\n/g, '<br>')}</p>` : bodyHtml,
+          body_text: bodyType === 'html' ? bodyHtml.replace(/<[^>]+>/g, '') : bodyText,
+          reply_to: replyTo || undefined,
+        }),
       });
+      
       const data = await res.json();
 
-      const sentEmail: SentEmail = {
-        id: uuid(),
-        smtpId,
-        smtpName: smtp.name,
-        to: cleanTo, 
-        cc: cleanCc, 
-        subject,
-        status: data.success ? 'sent' : 'failed',
-        error: data.error,
-        sentAt: new Date().toISOString(),
-      };
-
-      onEmailSent(sentEmail);
-      
-      let finalMessage = `Email sent successfully to ${totalCleanRecipients} recipient(s) via ${smtp.name}.`;
-      if (suppressedTo.length > 0) {
-        finalMessage += ` Skipped ${suppressedTo.length} unsubscribed recipient(s) automatically to maintain GDPR compliance.`;
+      if (data.success) {
+        let finalMessage = `Email sent successfully to ${firstRecipient.email} via ${smtp.name}.`;
+        if (cleanTo.length > 1) {
+          finalMessage += ` Note: Bulk sending is currently limited - only first recipient sent.`;
+        }
+        if (suppressedTo.length > 0) {
+          finalMessage += ` Skipped ${suppressedTo.length} unsubscribed recipient(s).`;
+        }
+        
+        toast.success(finalMessage);
+        
+        // Reset form
+        setTo([]);
+        setCc([]);
+        setBcc([]);
+        setSubject('');
+        setBodyHtml('');
+        setBodyText('');
+        setReplyTo('');
+        
+        // Refresh page to show updated stats
+        router.refresh();
+      } else {
+        toast.error(data.error || 'Failed to send email');
       }
-
-      setResult(data.success
-        ? { type: 'success', msg: finalMessage }
-        : { type: 'error', msg: data.error || 'Failed to send' });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Network error';
-      setResult({ type: 'error', msg });
+      toast.error(msg);
     }
     setSending(false);
   }
@@ -409,9 +357,9 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Sending Account
         </div>
-        {active.length === 0 ? (
+        {smtpAccounts.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--red)', fontWeight: 600 }}>
-            No active sending accounts connected. Add one to compose.
+            No sending accounts connected. Add one to compose.
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
@@ -437,8 +385,8 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
                 cursor: 'pointer'
               }}
             >
-              {active.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.fromEmail})</option>
+              {smtpAccounts.map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
               ))}
             </select>
             {smtp && (
@@ -467,20 +415,7 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
         </div>
       )}
 
-      {/* Results persistent banner */}
-      {result && (
-        <div className="glass fade-in" style={{
-          padding: '12px 16px', marginBottom: 20,
-          background: result.type === 'success' ? 'rgba(31,138,112,0.06)' : 'rgba(179,57,44,0.06)',
-          border: `1px solid ${result.type === 'success' ? 'rgba(31,138,112,0.2)' : 'rgba(179,57,44,0.2)'}`,
-          color: result.type === 'success' ? 'var(--green)' : 'var(--red)',
-          fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
-          fontWeight: 500, lineHeight: 1.4
-        }}>
-          {result.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          <span>{result.msg}</span>
-        </div>
-      )}
+      {/* Results banner - Removed, using toast instead */}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* Left - Form */}
@@ -567,54 +502,7 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
             </div>
           )}
 
-          {/* Attachments */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Paperclip size={14} /> Attachments
-              {attachments.length > 0 && (
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>
-                  ({attachments.length} file{attachments.length !== 1 ? 's' : ''}, {formatFileSize(totalAttachmentSize)} / 25MB)
-                </span>
-              )}
-            </label>
-            
-            {attachments.length > 0 && (
-              <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {attachments.map((att, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                    <FileText size={14} color="var(--accent)" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{att.filename}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatFileSize(att.size)}</div>
-                    </div>
-                    <button onClick={() => removeAttachment(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <input
-              type="file"
-              id="attachment-upload"
-              multiple
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-            <label htmlFor="attachment-upload">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => document.getElementById('attachment-upload')?.click()}
-                disabled={uploading || totalAttachmentSize >= MAX_TOTAL_SIZE}
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                {uploading ? <RefreshCw size={14} className="spin" /> : <Paperclip size={14} />}
-                {uploading ? 'Processing Files...' : 'Attach Documents'}
-              </button>
-            </label>
-          </div>
+          {/* Attachments - Removed for now, can be added later */}
 
           <div style={{ display: 'flex', gap: 10 }}>
             <button
@@ -644,12 +532,6 @@ export default function ComposeEmail({ smtpConfigs, templates, selectedTemplate,
             {to.length > 0 && (
               <div style={{ fontSize: 12, color: '#666666', marginBottom: 12, background: '#ffffff', padding: '8px 12px', borderRadius: '6px' }}>
                 To: {to.map(r => r.name ? `${r.name} <${r.email}>` : r.email).join(', ')}
-              </div>
-            )}
-            {attachments.length > 0 && (
-              <div style={{ fontSize: 12, color: '#666666', marginBottom: 12, background: '#ffffff', padding: '8px 12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Paperclip size={12} />
-                {attachments.length} attachments ({formatFileSize(totalAttachmentSize)})
               </div>
             )}
             <div style={{ height: 1, background: 'var(--border)', marginBottom: 12 }} />

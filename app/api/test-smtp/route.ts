@@ -1,37 +1,80 @@
-import { NextRequest, NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
-import { SmtpConfig } from '@/lib/types';
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+import nodemailer from 'nodemailer'
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json()
+  const { account_id } = body
+
+  if (!account_id) {
+    return NextResponse.json({ error: 'Missing account_id' }, { status: 400 })
+  }
+
+  // Get account details
+  const { data: account, error } = await supabase
+    .from('sending_accounts')
+    .select('*')
+    .eq('id', account_id)
+    .single()
+
+  if (error || !account) {
+    return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+  }
+
+  // Check if user has access to this account
+  const { data: hasAccess } = await supabase
+    .from('account_access')
+    .select('id')
+    .eq('account_id', account_id)
+    .eq('user_id', user.id)
+    .single()
+
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', account.organization_id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!hasAccess && membership?.role !== 'owner' && membership?.role !== 'admin') {
+    return NextResponse.json({ error: 'No access to this account' }, { status: 403 })
+  }
+
   try {
-    const cfg: SmtpConfig = await req.json();
+    const transporter = nodemailer.createTransport({
+      host: account.smtp_host,
+      port: account.smtp_port,
+      secure: account.use_tls,
+      auth: {
+        user: account.smtp_username,
+        pass: account.smtp_password, // TODO: Decrypt in production
+      },
+    })
 
-    let transport;
-    if (cfg.provider === 'resend') {
-      transport = nodemailer.createTransport({
-        host: 'smtp.resend.com',
-        port: 465,
-        secure: true,
-        auth: { user: 'resend', pass: cfg.password },
-      });
-    } else if (cfg.provider === 'gmail') {
-      transport = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: cfg.user, pass: cfg.password },
-      });
-    } else {
-      transport = nodemailer.createTransport({
-        host: cfg.host,
-        port: cfg.port,
-        secure: cfg.secure,
-        auth: { user: cfg.user, pass: cfg.password },
-      });
-    }
+    await transporter.verify()
 
-    await transport.verify();
-    return NextResponse.json({ success: true });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Update last tested timestamp
+    await supabase
+      .from('sending_accounts')
+      .update({ last_tested_at: new Date().toISOString() })
+      .eq('id', account_id)
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'SMTP connection successful!' 
+    })
+  } catch (err: any) {
+    return NextResponse.json({ 
+      error: err.message || 'Connection failed',
+      details: err.code || 'UNKNOWN_ERROR'
+    }, { status: 400 })
   }
 }

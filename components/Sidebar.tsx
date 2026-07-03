@@ -1,38 +1,43 @@
 'use client';
-import { LayoutDashboard, Server, Send, Sparkles, BookMarked, Settings, Mail, LogOut, Globe } from 'lucide-react';
-import { User, UserRole } from '@/lib/types';
+import { LayoutDashboard, Server, Send, Sparkles, BookMarked, Settings, Users, CreditCard, Mail, LogOut } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { signOut } from '@/lib/actions/auth';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-type Tab = 'dashboard' | 'smtp' | 'compose' | 'ai' | 'templates' | 'settings' | 'platform';
-
-interface NavItem { id: Tab; icon: React.ElementType; label: string; ai?: boolean; }
-
-const NAV: NavItem[] = [
-  { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { id: 'compose',   icon: Send,            label: 'Compose' },
-  { id: 'ai',        icon: Sparkles,        label: 'AI Generator', ai: true },
-  { id: 'templates', icon: BookMarked,      label: 'Templates' },
-  { id: 'smtp',      icon: Server,          label: 'Sending Accounts' },
-  { id: 'settings',  icon: Settings,        label: 'Settings' },
-  { id: 'platform',  icon: Globe,           label: 'Platform Ops' },
-];
-
-const ALLOWED_TABS: Record<UserRole, Tab[]> = {
-  platform_admin: ['dashboard', 'compose', 'ai', 'templates', 'smtp', 'settings', 'platform'],
-  admin: ['dashboard', 'compose', 'ai', 'templates', 'smtp', 'settings'],
-  marketer: ['dashboard', 'compose', 'ai', 'templates', 'smtp'],
-  viewer: ['dashboard', 'templates'],
-};
-
-interface Props {
-  active: Tab;
-  onChange: (t: Tab) => void;
-  currentUser: User;
-  onLogout: () => void;
+interface SidebarProps {
+  user?: SupabaseUser | null
+  profile?: any
+  currentOrg?: any
 }
 
-export default function Sidebar({ active, onChange, currentUser, onLogout }: Props) {
-  const allowed = ALLOWED_TABS[currentUser.role];
-  const visibleNav = NAV.filter(item => allowed.includes(item.id));
+interface NavItem { 
+  id: string
+  icon: React.ElementType
+  label: string
+  ai?: boolean
+}
+
+const NAV: NavItem[] = [
+  { id: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { id: '/compose',   icon: Send,            label: 'Compose' },
+  { id: '/ai',        icon: Sparkles,        label: 'AI Generator', ai: true },
+  { id: '/templates', icon: BookMarked,      label: 'Templates' },
+  { id: '/smtp',      icon: Server,          label: 'Sending Accounts' },
+  { id: '/team',      icon: Users,           label: 'Team' },
+  { id: '/billing',   icon: CreditCard,      label: 'Billing' },
+  { id: '/settings',  icon: Settings,        label: 'Settings' },
+];
+
+export default function Sidebar({ user, profile, currentOrg }: SidebarProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+
+  async function handleLogout() {
+    await signOut()
+  }
+
+  const userName = profile?.full_name || user?.email?.split('@')[0] || 'User'
+  const userInitials = userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
 
   return (
     <aside style={{
@@ -59,8 +64,8 @@ export default function Sidebar({ active, onChange, currentUser, onLogout }: Pro
             <Mail size={18} color="white" />
           </div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#FFFFFF', fontFamily: 'Fraunces' }}>ZeCompaign</div>
-            <div style={{ fontSize: 10, color: '#A0A5B5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Internal Ops</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#FFFFFF', fontFamily: 'Fraunces' }}>zecompaign</div>
+            <div style={{ fontSize: 10, color: '#A0A5B5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Campaign Platform</div>
           </div>
         </div>
       </div>
@@ -70,12 +75,12 @@ export default function Sidebar({ active, onChange, currentUser, onLogout }: Pro
         <div className="section-title" style={{ paddingLeft: 10, marginBottom: 12, fontSize: 10, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Navigation
         </div>
-        {visibleNav.map(item => {
-          const isActive = active === item.id;
+        {NAV.map(item => {
+          const isActive = pathname === item.id
           return (
             <button
               key={item.id}
-              onClick={() => onChange(item.id)}
+              onClick={() => router.push(item.id)}
               style={{
                 width: '100%', 
                 display: 'flex', 
@@ -118,14 +123,14 @@ export default function Sidebar({ active, onChange, currentUser, onLogout }: Pro
         })}
       </nav>
 
-      {/* User Session Switcher (Avatar) */}
+      {/* User Session */}
       <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '16px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36,
             height: 36,
             borderRadius: '50%',
-            backgroundColor: currentUser.avatarColor,
+            backgroundColor: '#3B82F6',
             color: 'white',
             display: 'flex',
             alignItems: 'center',
@@ -135,19 +140,19 @@ export default function Sidebar({ active, onChange, currentUser, onLogout }: Pro
             fontFamily: 'Fraunces',
             flexShrink: 0
           }}>
-            {currentUser.name.split(' ').map(n => n[0]).join('')}
+            {userInitials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {currentUser.name}
+              {userName}
             </div>
             <div style={{ fontSize: 11, color: '#A0A5B5', textTransform: 'capitalize' }}>
-              {currentUser.role}
+              {currentOrg?.role || 'member'}
             </div>
           </div>
           <button 
-            onClick={onLogout} 
-            title="Log out / Switch User" 
+            onClick={handleLogout} 
+            title="Log out" 
             style={{
               background: 'none', 
               border: 'none', 

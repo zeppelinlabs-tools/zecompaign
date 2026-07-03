@@ -1,24 +1,62 @@
 'use client';
 import { useState } from 'react';
-import { Users, Key, Plus, Trash2, Eye, EyeOff, ArrowUp, ArrowDown, Sparkles, ChevronDown, ChevronUp, Check, Shield } from 'lucide-react';
-import { v4 as uuid } from 'uuid';
-import { GeminiKey, User, SmtpConfig, UserRole } from '@/lib/types';
+import { Users, Key, Plus, Trash2, Eye, EyeOff, ArrowUp, ArrowDown, Sparkles, ChevronDown, ChevronUp, Shield, RefreshCw } from 'lucide-react';
+import { createGeminiKey, updateGeminiKey, deleteGeminiKey } from '@/lib/actions/gemini-keys';
+import { updateMemberRole } from '@/lib/actions/organizations';
+import { grantAccountAccess, revokeAccountAccess } from '@/lib/actions/sending-accounts';
+import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
+
+interface GeminiKey {
+  id: string;
+  label: string;
+  key_encrypted: string;
+  model: string;
+  active: boolean;
+  priority: number;
+}
+
+interface Member {
+  id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  profiles: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+interface SendingAccount {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface AccountAccess {
+  user_id: string;
+  account_id: string;
+}
 
 interface Props {
-  keys: GeminiKey[];
-  onKeysChange: (k: GeminiKey[]) => void;
-  users: User[];
-  onUsersChange: (u: User[]) => void;
-  smtpConfigs: SmtpConfig[];
+  geminiKeys: GeminiKey[];
+  members: Member[];
+  sendingAccounts: SendingAccount[];
+  accountAccess: AccountAccess[];
+  organizationId: string;
+  currentUserId: string;
+  userRole: string;
 }
 
 const GEMINI_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3.5-live-translate-preview'
+  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+  { value: 'gemini-3.5-pro', label: 'Gemini 3.5 Pro' },
+  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
 ];
 
-export default function Settings({ keys, onKeysChange, users, onUsersChange, smtpConfigs }: Props) {
+export default function Settings({ geminiKeys, members, sendingAccounts, accountAccess, organizationId, currentUserId, userRole }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'users' | 'keys'>('users');
   
   // Gemini Keys States
@@ -26,84 +64,115 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
   const [keyVal, setKeyVal] = useState('');
   const [model, setModel] = useState('gemini-3.5-flash');
   const [showKey, setShowKey] = useState(false);
-  const [revealedKeyIds, setRevealedKeyIds] = useState<string[]>([]);
+  const [savingKey, setSavingKey] = useState(false);
 
   // Users States
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [updatingRole, setUpdatingRole] = useState<string | null>(null);
+
+  const canManage = userRole === 'owner' || userRole === 'admin';
 
   // Gemini Keys Actions
-  function addKey() {
-    if (!label.trim() || !keyVal.trim()) return;
-    const newKey: GeminiKey = {
-      id: uuid(), label: label.trim(), key: keyVal.trim(),
-      active: true, priority: keys.length + 1, model: model,
-    };
-    onKeysChange([...keys, newKey]);
-    setLabel(''); setKeyVal(''); setModel('gemini-3.5-flash');
-  }
+  async function addKey() {
+    if (!label.trim() || !keyVal.trim()) {
+      toast.error('Please fill in all fields');
+      return;
+    }
 
-  function removeKey(id: string) { 
-    onKeysChange(keys.filter(k => k.id !== id)); 
-  }
+    setSavingKey(true);
+    const result = await createGeminiKey({
+      organization_id: organizationId,
+      name: label.trim(),
+      api_key: keyVal.trim(),
+      monthly_quota: 10000, // Default quota
+    });
 
-  function toggleKeyActive(id: string) {
-    onKeysChange(keys.map(k => k.id === id ? { ...k, active: !k.active } : k));
-  }
-
-  function moveKeyUp(idx: number) {
-    if (idx === 0) return;
-    const arr = [...keys];
-    [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
-    onKeysChange(arr.map((k, i) => ({ ...k, priority: i + 1 })));
-  }
-
-  function moveKeyDown(idx: number) {
-    if (idx === keys.length - 1) return;
-    const arr = [...keys];
-    [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
-    onKeysChange(arr.map((k, i) => ({ ...k, priority: i + 1 })));
-  }
-
-  function toggleRevealKey(id: string) {
-    if (revealedKeyIds.includes(id)) {
-      setRevealedKeyIds(revealedKeyIds.filter(x => x !== id));
+    if (result.error) {
+      toast.error(result.error);
     } else {
-      // Re-auth confirmation simulated
-      const confirmReveal = window.confirm("Are you sure you want to reveal this API Key? Credentials should be handled securely.");
-      if (confirmReveal) {
-        setRevealedKeyIds([...revealedKeyIds, id]);
+      toast.success('API key added successfully');
+      setLabel('');
+      setKeyVal('');
+      setModel('gemini-3.5-flash');
+      router.refresh();
+    }
+    setSavingKey(false);
+  }
+
+  async function removeKey(id: string) {
+    if (!confirm('Are you sure you want to delete this API key?')) return;
+
+    const result = await deleteGeminiKey(id);
+    
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success('API key deleted');
+      router.refresh();
+    }
+  }
+
+  async function toggleKeyActive(id: string, currentActive: boolean) {
+    const result = await updateGeminiKey(id, { is_active: !currentActive });
+    
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success(`API key ${!currentActive ? 'enabled' : 'disabled'}`);
+      router.refresh();
+    }
+  }
+
+  function maskKeyString(k: string) {
+    // Always mask - keys are encrypted in database
+    return '••••••••••••••••' + (k.length > 16 ? k.slice(-4) : '');
+  }
+
+  // Users / Roles & Scoping Actions
+  async function handleRoleChange(memberId: string, userId: string, newRole: 'owner' | 'admin' | 'member' | 'viewer') {
+    if (!canManage) {
+      toast.error('You do not have permission to change roles');
+      return;
+    }
+
+    setUpdatingRole(memberId);
+    const result = await updateMemberRole(organizationId, userId, newRole as 'admin' | 'member');
+    
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success('Role updated successfully');
+      router.refresh();
+    }
+    setUpdatingRole(null);
+  }
+
+  async function toggleSmtpAccess(userId: string, accountId: string) {
+    const hasAccess = accountAccess.some(a => a.user_id === userId && a.account_id === accountId);
+    
+    if (hasAccess) {
+      const result = await revokeAccountAccess(accountId, userId);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('Access revoked');
+        router.refresh();
+      }
+    } else {
+      const result = await grantAccountAccess(accountId, userId);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('Access granted');
+        router.refresh();
       }
     }
   }
 
-  function maskKeyString(k: string, id: string) {
-    if (revealedKeyIds.includes(id)) return k;
-    if (k.length <= 8) return '•'.repeat(k.length);
-    return k.slice(0, 6) + '•'.repeat(k.length - 10) + k.slice(-4);
-  }
-
-  // Users / Roles & Scoping Actions
-  function handleRoleChange(userId: string, newRole: UserRole) {
-    const updated = users.map(u => 
-      u.id === userId 
-        ? { ...u, role: newRole, allowedSmtpIds: newRole === 'admin' ? [] : u.allowedSmtpIds } 
-        : u
-    );
-    onUsersChange(updated);
-  }
-
-  function toggleSmtpAccess(userId: string, smtpId: string) {
-    const updated = users.map(u => {
-      if (u.id === userId) {
-        const hasAccess = u.allowedSmtpIds.includes(smtpId);
-        const allowedSmtpIds = hasAccess
-          ? u.allowedSmtpIds.filter(id => id !== smtpId)
-          : [...u.allowedSmtpIds, smtpId];
-        return { ...u, allowedSmtpIds };
-      }
-      return u;
-    });
-    onUsersChange(updated);
+  function getUserAccountAccess(userId: string): string[] {
+    return accountAccess
+      .filter(a => a.user_id === userId)
+      .map(a => a.account_id);
   }
 
   return (
@@ -168,18 +237,29 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
               <Users size={16} color="var(--accent)" />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Teammates Directory</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>Team Members Directory</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Configure roles and SMTP sending access scopes per user</div>
             </div>
           </div>
 
+          {!canManage && (
+            <div style={{ padding: '10px 14px', background: 'var(--yellow-glow)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 6, marginBottom: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+              ⚠️ You need admin permissions to manage team member roles and access
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {users.map(u => {
-              const monogram = u.name.split(' ').map(n => n[0]).join('');
-              const isExpanded = expandedUserId === u.id;
+            {members.map(member => {
+              const profile = member.profiles;
+              const monogram = profile.full_name 
+                ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                : profile.email.slice(0, 2).toUpperCase();
+              const isExpanded = expandedUserId === member.user_id;
+              const userAccountIds = getUserAccountAccess(member.user_id);
+              const isCurrentUser = member.user_id === currentUserId;
               
               return (
-                <div key={u.id} style={{ 
+                <div key={member.id} style={{ 
                   border: '1px solid var(--border)', 
                   borderRadius: 6, 
                   background: 'var(--paper-100)', 
@@ -193,23 +273,24 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                     justifyContent: 'space-between',
                     cursor: 'pointer',
                     background: '#FFFFFF'
-                  }} onClick={() => setExpandedUserId(isExpanded ? null : u.id)}>
+                  }} onClick={() => setExpandedUserId(isExpanded ? null : member.user_id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       {/* Avatar */}
                       <div style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        background: u.avatarColor, color: 'white',
+                        background: 'var(--accent)', color: 'white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: 12, fontFamily: 'Fraunces'
                       }}>
                         {monogram}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>
-                          {u.name}
+                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {profile.full_name || profile.email}
+                          {isCurrentUser && <span className="badge badge-blue" style={{ fontSize: 9 }}>YOU</span>}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          {u.email}
+                          {profile.email}
                         </div>
                       </div>
                     </div>
@@ -219,19 +300,22 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Role:</span>
                         <select 
-                          value={u.role}
-                          onChange={e => handleRoleChange(u.id, e.target.value as UserRole)}
-                          style={{ padding: '4px 24px 4px 8px', fontSize: 12, width: 'auto', background: '#FFFFFF' }}
+                          value={member.role}
+                          onChange={e => handleRoleChange(member.id, member.user_id, e.target.value as any)}
+                          disabled={!canManage || updatingRole === member.id || isCurrentUser}
+                          style={{ padding: '4px 24px 4px 8px', fontSize: 12, width: 'auto', background: '#FFFFFF', opacity: (!canManage || isCurrentUser) ? 0.6 : 1 }}
+                          title={isCurrentUser ? 'You cannot change your own role' : ''}
                         >
+                          <option value="owner">Owner</option>
                           <option value="admin">Admin</option>
-                          <option value="marketer">Marketer</option>
+                          <option value="member">Member</option>
                           <option value="viewer">Viewer</option>
                         </select>
                       </div>
 
                       {/* Expand control */}
                       <button 
-                        onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                        onClick={() => setExpandedUserId(isExpanded ? null : member.user_id)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
                       >
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -246,32 +330,32 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                         Sending Account Access Scopes
                       </div>
                       
-                      {u.role === 'admin' ? (
+                      {member.role === 'owner' || member.role === 'admin' ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--green)', fontSize: 13, background: 'rgba(31,138,112,0.06)', padding: '10px 14px', borderRadius: 4, border: '1px solid rgba(31,138,112,0.1)' }}>
                           <Shield size={16} />
-                          <span><strong>Arthur Admin Role:</strong> Admins implicitly have sending access to all connected SMTP configurations.</span>
+                          <span><strong>{member.role === 'owner' ? 'Owner' : 'Admin'} Role:</strong> {member.role === 'owner' ? 'Owners' : 'Admins'} have sending access to all connected SMTP configurations.</span>
                         </div>
-                      ) : u.role === 'viewer' ? (
+                      ) : member.role === 'viewer' ? (
                         <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic' }}>
                           Viewers are restricted to read-only access and cannot send emails from any account.
                         </div>
                       ) : (
                         <div>
                           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-                            Select which connected accounts this teammate is authorized to select and send campaigns from:
+                            Select which connected accounts this teammate is authorized to use for sending campaigns:
                           </p>
                           
-                          {smtpConfigs.length === 0 ? (
+                          {sendingAccounts.length === 0 ? (
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
                               No SMTP accounts have been connected yet. Connect accounts in Sending Accounts to delegate access.
                             </div>
                           ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-                              {smtpConfigs.map(cfg => {
-                                const isAllowed = u.allowedSmtpIds.includes(cfg.id);
+                              {sendingAccounts.map(account => {
+                                const isAllowed = userAccountIds.includes(account.id);
                                 return (
                                   <label 
-                                    key={cfg.id} 
+                                    key={account.id} 
                                     style={{ 
                                       display: 'flex', 
                                       alignItems: 'center', 
@@ -280,19 +364,21 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                                       background: '#FFFFFF', 
                                       borderRadius: 6, 
                                       border: `1px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
-                                      cursor: 'pointer',
-                                      margin: 0
+                                      cursor: canManage ? 'pointer' : 'not-allowed',
+                                      margin: 0,
+                                      opacity: canManage ? 1 : 0.6
                                     }}
                                   >
                                     <input
                                       type="checkbox"
                                       checked={isAllowed}
-                                      onChange={() => toggleSmtpAccess(u.id, cfg.id)}
-                                      style={{ width: 'auto', cursor: 'pointer' }}
+                                      onChange={() => toggleSmtpAccess(member.user_id, account.id)}
+                                      disabled={!canManage}
+                                      style={{ width: 'auto', cursor: canManage ? 'pointer' : 'not-allowed' }}
                                     />
                                     <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column' }}>
-                                      <span style={{ fontWeight: 600, color: 'var(--text)' }}>{cfg.name}</span>
-                                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{cfg.fromEmail}</span>
+                                      <span style={{ fontWeight: 600, color: 'var(--text)' }}>{account.name}</span>
+                                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{account.email}</span>
                                     </div>
                                   </label>
                                 );
@@ -323,6 +409,12 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
             </div>
           </div>
 
+          {!canManage && (
+            <div style={{ padding: '10px 14px', background: 'var(--yellow-glow)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 6, marginBottom: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+              ⚠️ You need admin permissions to manage Gemini API keys
+            </div>
+          )}
+
           {/* Failover Alert */}
           <div style={{ 
             padding: '12px 16px', 
@@ -337,70 +429,65 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--purple)', marginBottom: 2 }}>Auto-Failover Vault</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                API keys are encrypted and stored securely. Disable keys temporarily, reorder priorities using arrow reordering, and configure backup models (lite/live-translate).
+                API keys are encrypted and stored securely in Supabase Vault. When a key fails or hits rate limits, the system automatically tries the next active key.
               </div>
             </div>
           </div>
 
           {/* Add Key Form */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 0 180px' }}>
-              <label>Credentials Name</label>
-              <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Primary Key - Production" />
-            </div>
-            <div style={{ flex: '2 0 240px' }}>
-              <label>Gemini API Key</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={keyVal}
-                  onChange={e => setKeyVal(e.target.value)}
-                  placeholder="AIzaSy..."
-                  style={{ paddingRight: 42 }}
-                />
-                <button onClick={() => setShowKey(!showKey)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                  {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+          {canManage && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 0 180px' }}>
+                <label>Credentials Name</label>
+                <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Primary Key - Production" />
+              </div>
+              <div style={{ flex: '2 0 240px' }}>
+                <label>Gemini API Key</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={keyVal}
+                    onChange={e => setKeyVal(e.target.value)}
+                    placeholder="AIzaSy..."
+                    style={{ paddingRight: 42 }}
+                  />
+                  <button onClick={() => setShowKey(!showKey)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                    {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+              <div style={{ flex: '1 0 180px' }}>
+                <label>Model</label>
+                <select value={model} onChange={e => setModel(e.target.value)}>
+                  {GEMINI_MODELS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', flex: '1 0 120px' }}>
+                <button className="btn-ai" onClick={addKey} disabled={!label.trim() || !keyVal.trim() || savingKey} style={{ width: '100%', justifyContent: 'center' }}>
+                  {savingKey ? <RefreshCw size={14} className="spin" /> : <Plus size={14} />}
+                  {savingKey ? 'Adding...' : 'Add Key'}
                 </button>
               </div>
             </div>
-            <div style={{ flex: '1 0 180px' }}>
-              <label>Backup Model Target</label>
-              <select value={model} onChange={e => setModel(e.target.value)}>
-                {GEMINI_MODELS.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', flex: '1 0 120px' }}>
-              <button className="btn-ai" onClick={addKey} disabled={!label.trim() || !keyVal.trim()} style={{ width: '100%', justifyContent: 'center' }}>
-                <Plus size={14} /> Add API Key
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* Keys Listing */}
-          {keys.length === 0 ? (
+          {geminiKeys.length === 0 ? (
             <div style={{ padding: '30px', textAlign: 'center', background: 'var(--paper-100)', borderRadius: 6, border: '1px dashed var(--border)' }}>
               <Key size={28} color="var(--text-muted)" style={{ margin: '0 auto 10px', opacity: 0.5 }} />
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No credentials added yet. Enter a Gemini API Key above.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No API keys configured yet. {canManage ? 'Add your first Gemini key above.' : 'Ask an admin to add keys.'}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
                 Get keys at <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>aistudio.google.com</a>
               </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {keys.map((k, i) => (
+              {geminiKeys
+                .sort((a, b) => a.priority - b.priority)
+                .map((k, i) => (
                 <div key={k.id} className="glass glass-hover" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#FFFFFF' }}>
-                  {/* Priority reorder arrows */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <button onClick={() => moveKeyUp(i)} disabled={i === 0} style={{ background: 'none', border: 'none', cursor: i === 0 ? 'not-allowed' : 'pointer', color: i === 0 ? '#C0C5D5' : 'var(--text-muted)', padding: 2 }}>
-                      <ArrowUp size={12} />
-                    </button>
-                    <button onClick={() => moveKeyDown(i)} disabled={i === keys.length - 1} style={{ background: 'none', border: 'none', cursor: i === keys.length - 1 ? 'not-allowed' : 'pointer', color: i === keys.length - 1 ? '#C0C5D5' : 'var(--text-muted)', padding: 2 }}>
-                      <ArrowDown size={12} />
-                    </button>
-                  </div>
-
                   {/* Priority rank badge */}
                   <div style={{ 
                     width: 28, height: 28, borderRadius: 4, 
@@ -416,10 +503,10 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{k.label}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace', margin: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {maskKeyString(k.key, k.id)}
+                      {maskKeyString(k.key_encrypted)}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--purple)', background: 'var(--purple-glow)', padding: '2px 6px', borderRadius: 3, display: 'inline-block', fontWeight: 600 }}>
-                      {k.model || 'gemini-3.5-flash'}
+                      {k.model}
                     </div>
                   </div>
 
@@ -428,17 +515,16 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
                   </span>
 
                   {/* Actions */}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 30 }} onClick={() => toggleRevealKey(k.id)}>
-                      {revealedKeyIds.includes(k.id) ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
-                    <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 30 }} onClick={() => toggleKeyActive(k.id)}>
-                      {k.active ? 'Disable' : 'Enable'}
-                    </button>
-                    <button className="btn-danger" style={{ padding: '6px 10px', minHeight: 30 }} onClick={() => removeKey(k.id)}>
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 30 }} onClick={() => toggleKeyActive(k.id, k.active)}>
+                        {k.active ? 'Disable' : 'Enable'}
+                      </button>
+                      <button className="btn-danger" style={{ padding: '6px 10px', minHeight: 30 }} onClick={() => removeKey(k.id)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -451,21 +537,21 @@ export default function Settings({ keys, onKeysChange, users, onUsersChange, smt
               {[
                 { 
                   model: 'gemini-3.5-flash', 
-                  badge: 'FLAGSHIP',
+                  badge: 'RECOMMENDED',
                   color: 'var(--purple)',
-                  text: 'Optimal for text drafting and structured copy extraction — fast, reliable copy generator.' 
+                  text: 'Fast and efficient model for email generation with excellent quality.' 
+                },
+                { 
+                  model: 'gemini-3.5-pro', 
+                  badge: 'ADVANCED',
+                  color: 'var(--accent)',
+                  text: 'Most capable model for complex email templates and detailed content generation.' 
                 },
                 { 
                   model: 'gemini-3.1-flash-lite', 
                   badge: 'EFFICIENT',
-                  color: 'var(--accent)',
-                  text: 'Super high-speed, cost-optimized backup model for simple outreach templates.' 
-                },
-                { 
-                  model: 'gemini-3.5-live-translate-preview', 
-                  badge: 'PREVIEW',
-                  color: 'var(--yellow)',
-                  text: 'Optimized for live multi-language localized variations and quick translations.' 
+                  color: 'var(--green)',
+                  text: 'Lightweight model optimized for simple templates and high-volume generation.' 
                 },
               ].map(({ model, badge, color, text }) => (
                 <div key={model} style={{ display: 'flex', gap: 8, padding: 10, background: 'var(--paper-100)', borderRadius: 6, border: '1px solid var(--border)', alignItems: 'flex-start' }}>

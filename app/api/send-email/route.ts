@@ -1,86 +1,149 @@
-import { NextRequest, NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
-import { SmtpConfig, EmailDraft, EmailAttachment } from '@/lib/types';
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+import nodemailer from 'nodemailer'
 
-function buildTransport(cfg: SmtpConfig) {
-  if (cfg.provider === 'resend') {
-    return nodemailer.createTransport({
-      host: 'smtp.resend.com',
-      port: 465,
-      secure: true,
-      auth: { user: 'resend', pass: cfg.password },
-    });
+export async function POST(request: Request) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (cfg.provider === 'gmail') {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: cfg.user, pass: cfg.password },
-    });
+
+  const body = await request.json()
+  const {
+    organization_id,
+    account_id,
+    to_email,
+    to_name,
+    subject,
+    body_html,
+    body_text,
+    reply_to,
+  } = body
+
+  // Validate required fields
+  if (!organization_id || !account_id || !to_email || !subject || !body_html) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
-  return nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: { user: cfg.user, pass: cfg.password },
-  });
-}
 
-function formatAddr(list: { email: string; name?: string }[]) {
-  return list.map(r => (r.name ? `"${r.name}" <${r.email}>` : r.email)).join(', ');
-}
+  // Check suppression list
+  const { data: suppressed } = await supabase
+    .from('suppressed_recipients')
+    .select('id')
+    .eq('organization_id', organization_id)
+    .eq('email', to_email)
+    .single()
 
-function buildAttachments(attachments?: EmailAttachment[]) {
-  if (!attachments || attachments.length === 0) return [];
-  return attachments.map(att => ({
-    filename: att.filename,
-    content: att.content,
-    encoding: 'base64' as const,
-    contentType: att.contentType,
-  }));
-}
+  if (suppressed) {
+    return NextResponse.json({ error: 'Recipient is on the suppression list' }, { status: 400 })
+  }
 
-export async function POST(req: NextRequest) {
+  // Get sending account
+  const { data: account, error: accountError } = await supabase
+    .from('sending_accounts')
+    .select('*')
+    .eq('id', account_id)
+    .single()
+
+  if (accountError || !account) {
+    return NextResponse.json({ error: 'Sending account not found' }, { status: 404 })
+  }
+
+  // Check if user has access to this account
+  const { data: hasAccess } = await supabase
+    .from('account_access')
+    .select('id')
+    .eq('account_id', account_id)
+    .eq('user_id', user.id)
+    .single()
+
+  // Check if user is org owner/admin
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', organization_id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!hasAccess && membership?.role !== 'owner' && membership?.role !== 'admin') {
+    return NextResponse.json({ error: 'No access to this sending account' }, { status: 403 })
+  }
+
+  // Create transporter
+  const transporter = nodemailer.createTransport({
+    host: account.smtp_host,
+    port: account.smtp_port,
+    secure: account.use_tls,
+    auth: {
+      user: account.smtp_username,
+      pass: account.smtp_password, // TODO: Decrypt in production
+    },
+  })
+
   try {
-    const body = await req.json() as { smtp: SmtpConfig; draft: EmailDraft };
-    const { smtp, draft } = body;
+    // Send email
+    const info = await transporter.sendMail({
+      from: `${account.name || account.email} <${account.email}>`,
+      to: to_name ? `${to_name} <${to_email}>` : to_email,
+      subject: subject,
+      text: body_text || '',
+      html: body_html,
+      replyTo: reply_to || account.email,
+    })
 
-    if (!smtp || !draft) {
-      return NextResponse.json({ error: 'Missing smtp or draft' }, { status: 400 });
-    }
+    // Log sent email
+    const { data: sentEmail } = await supabase
+      .from('sent_emails')
+      .insert({
+        organization_id,
+        account_id,
+        to_email,
+        to_name,
+        subject,
+        body_html,
+        body_text,
+        sent_by: user.id,
+        message_id: info.messageId,
+        status: 'sent',
+      })
+      .select()
+      .single()
 
-    const transport = buildTransport(smtp);
-
-    const mailOptions = {
-      from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
-      to: formatAddr(draft.to),
-      cc: draft.cc?.length ? formatAddr(draft.cc) : undefined,
-      bcc: draft.bcc?.length ? formatAddr(draft.bcc) : undefined,
-      replyTo: draft.replyTo || undefined,
-      subject: draft.subject,
-      html: draft.bodyHtml,
-      text: draft.bodyText,
-      attachments: buildAttachments(draft.attachments),
-    };
-
-    const info = await transport.sendMail(mailOptions);
-    
-    // Log the response from the mail server
-    console.log('Email sent successfully:', {
-      messageId: info.messageId,
-      response: info.response,
-      accepted: info.accepted,
-      rejected: info.rejected,
-    });
+    // Log usage
+    await supabase.from('usage_logs').insert({
+      organization_id,
+      user_id: user.id,
+      action: 'email_sent',
+      metadata: {
+        account_id,
+        email_id: sentEmail?.id,
+      },
+    })
 
     return NextResponse.json({ 
-      success: true,
+      success: true, 
       messageId: info.messageId,
-      accepted: info.accepted,
-      rejected: info.rejected,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Email sending error:', err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+      emailId: sentEmail?.id
+    })
+  } catch (err: any) {
+    // Log failed email
+    await supabase
+      .from('sent_emails')
+      .insert({
+        organization_id,
+        account_id,
+        to_email,
+        to_name,
+        subject,
+        body_html,
+        body_text,
+        sent_by: user.id,
+        status: 'failed',
+        error_message: err.message,
+      })
+
+    return NextResponse.json({ error: err.message || 'Failed to send email' }, { status: 500 })
   }
 }

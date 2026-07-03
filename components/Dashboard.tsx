@@ -1,6 +1,7 @@
 'use client';
-import { CheckCircle, XCircle, Server, Sparkles, Send, Clock, ArrowUpRight, TrendingUp } from 'lucide-react';
-import { AppSettings, User } from '@/lib/types';
+import { CheckCircle, XCircle, Server, Sparkles, Send, Clock, Settings, TrendingUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 function StatCard({ icon: Icon, label, value, color, trend }: {
   icon: React.ElementType; label: string; value: string | number; color: string; trend?: string;
@@ -41,20 +42,24 @@ function getMonogram(name: string): string {
   return (name[0] || '?').toUpperCase();
 }
 
-export default function Dashboard({ settings, onNavigate, currentUser }: {
-  settings: AppSettings;
-  onNavigate: (tab: string) => void;
-  currentUser: User;
-}) {
-  const sent = settings.sentEmails.filter(e => e.status === 'sent').length;
-  const failed = settings.sentEmails.filter(e => e.status === 'failed').length;
-  const activeSmtp = settings.smtpConfigs.filter(s => s.active).length;
-  const activeGemini = settings.geminiKeys.filter(k => k.active).length;
+interface DashboardProps {
+  user: SupabaseUser
+  profile: any
+  currentOrg: any
+}
 
-  const recent = settings.sentEmails.slice(0, 8);
+export default function Dashboard({ user, profile, currentOrg }: DashboardProps) {
+  const router = useRouter()
+  
+  // TODO: Fetch these stats from API
+  const sent = 0
+  const failed = 0
+  const activeSmtp = 0
+  const activeGemini = 0
+  const recent: any[] = []
 
-  const canManageSmtp = currentUser.role !== 'viewer';
-  const canCompose = currentUser.role !== 'viewer';
+  const canManageSmtp = currentOrg?.role !== 'member';
+  const canCompose = true;
 
   return (
     <div style={{ padding: 28 }}>
@@ -64,7 +69,7 @@ export default function Dashboard({ settings, onNavigate, currentUser }: {
           Dashboard
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-          System overview for {currentUser.name} ({currentUser.role})
+          Welcome back, {profile?.full_name || user.email}
         </p>
       </div>
 
@@ -87,22 +92,22 @@ export default function Dashboard({ settings, onNavigate, currentUser }: {
         <div className="section-title">Quick Actions</div>
         <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
           {canCompose && (
-            <button className="btn-primary" onClick={() => onNavigate('compose')}>
+            <button className="btn-primary" onClick={() => router.push('/compose')}>
               <Send size={15} /> Compose Email
             </button>
           )}
           {canCompose && (
-            <button className="btn-ai" onClick={() => onNavigate('ai')}>
+            <button className="btn-ai" onClick={() => router.push('/ai')}>
               <Sparkles size={15} /> Generate with AI
             </button>
           )}
           {canManageSmtp && (
-            <button className="btn-secondary" onClick={() => onNavigate('smtp')}>
+            <button className="btn-secondary" onClick={() => router.push('/smtp')}>
               <Server size={15} /> Add Sending Account
             </button>
           )}
-          {currentUser.role === 'admin' && (
-            <button className="btn-secondary" onClick={() => onNavigate('settings')}>
+          {canManageSmtp && (
+            <button className="btn-secondary" onClick={() => router.push('/settings')}>
               <Settings size={15} /> Open Settings
             </button>
           )}
@@ -120,7 +125,7 @@ export default function Dashboard({ settings, onNavigate, currentUser }: {
             <p style={{ color: 'var(--text-muted)', fontSize: 15, fontFamily: 'Fraunces', fontWeight: 600, marginBottom: 12 }}>
               Nothing sent yet. Add a sending account to get started.
             </p>
-            <button className="btn-primary" onClick={() => onNavigate(canManageSmtp ? 'smtp' : 'dashboard')}>
+            <button className="btn-primary" onClick={() => router.push(canManageSmtp ? '/smtp' : '/dashboard')}>
               {canManageSmtp ? 'Add Sending Account' : 'Back to Dashboard'}
             </button>
           </div>
@@ -137,7 +142,7 @@ export default function Dashboard({ settings, onNavigate, currentUser }: {
               {recent.map((email, i) => {
                 const acctMonogram = getMonogram(email.smtpName);
                 const senderName = email.senderName || 'Teammate';
-                const senderMonogram = senderName.split(' ').map(n => n[0]).join('');
+                const senderMonogram = senderName.split(' ').map((n: string) => n[0]).join('');
 
                 return (
                   <tr key={email.id} style={{ borderBottom: i < recent.length - 1 ? '1px solid var(--border)' : 'none', background: '#FFFFFF' }}>
@@ -171,7 +176,7 @@ export default function Dashboard({ settings, onNavigate, currentUser }: {
 
                     {/* Recipients */}
                     <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text)' }}>
-                      {email.to.slice(0, 2).map(r => r.name || r.email).join(', ')}
+                      {email.to.slice(0, 2).map((r: any) => r.name || r.email).join(', ')}
                       {email.to.length > 2 && <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}> +{email.to.length - 2} more</span>}
                     </td>
 

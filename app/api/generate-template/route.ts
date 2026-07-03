@@ -1,80 +1,106 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-interface GeminiKey {
-  id: string;
-  key: string;
-  label: string;
-  active: boolean;
-  priority: number;
-  model: string;
-}
+export async function POST(request: Request) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
-async function tryGemini(apiKey: string, modelName: string, prompt: string): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: modelName });
-  const result = await model.generateContent(prompt);
-  return result.response.text();
-}
+  const body = await request.json()
+  const { organization_id, prompt, tone, length } = body
 
-export async function POST(req: NextRequest) {
+  if (!organization_id || !prompt) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  // Get active Gemini key with available quota
+  const { data: keys, error: keysError } = await supabase
+    .from('gemini_keys')
+    .select('*')
+    .eq('organization_id', organization_id)
+    .eq('is_active', true)
+    .order('usage_count', { ascending: true })
+
+  if (keysError || !keys || keys.length === 0) {
+    return NextResponse.json({ error: 'No active Gemini API keys found' }, { status: 400 })
+  }
+
+  // Find first key with available quota
+  const availableKey = keys.find(key => 
+    !key.monthly_quota || key.usage_count < key.monthly_quota
+  )
+
+  if (!availableKey) {
+    return NextResponse.json({ error: 'All Gemini API keys have reached their quota' }, { status: 429 })
+  }
+
   try {
-    const body = await req.json() as {
-      keys: GeminiKey[];
-      prompt: string;
-      tone: string;
-      type: string;
-    };
+    const genAI = new GoogleGenerativeAI(availableKey.api_key)
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
 
-    const { keys, prompt, tone, type } = body;
+    const systemPrompt = `You are an expert email copywriter. Generate a professional email template based on the user's request.
 
-    const activeKeys = [...(keys || []).filter(k => k.active)]
-      .sort((a, b) => a.priority - b.priority);
+Tone: ${tone || 'professional'}
+Length: ${length || 'medium'}
 
-    if (!activeKeys.length) {
-      return NextResponse.json({ error: 'No active Gemini API keys configured.' }, { status: 400 });
-    }
-
-    const fullPrompt = `You are an expert email copywriter. Generate a professional email based on:
-
-Type: ${type}
-Tone: ${tone}
-Request: ${prompt}
-
-Return ONLY a JSON object (no markdown, no backticks) with these exact fields:
+Return ONLY a JSON object with this exact structure:
 {
   "subject": "Email subject line",
-  "bodyHtml": "Full HTML email body with inline styles, paragraphs, and proper formatting",
-  "bodyText": "Plain text version of the email"
+  "body_html": "<h1>Title</h1><p>Body content with HTML formatting</p>",
+  "body_text": "Plain text version"
 }
 
-CRITICAL STYLING REQUIREMENTS:
-- ALL text must use dark colors (black or dark gray: #000000, #222222, #333333)
-- Background colors must be white or very light (#ffffff, #f9f9f9, #f5f5f5)
-- Links should be blue or a visible color (#0066cc, #1a73e8)
-- DO NOT use dark backgrounds
-- Ensure high contrast for readability (dark text on light background)
-- Use inline styles for all color properties
+Do not include any markdown code blocks or additional text. Just the JSON object.`
 
-The HTML should be clean, professional, and ready to send. Use <p>, <strong>, <a>, <ul>, <li> tags as needed. Do not include <html>, <head>, or <body> wrappers. Wrap the entire content in a <div style="font-family: Helvetica, Arial, sans-serif; font-size: 16px; color: #222222; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff;"> for consistent styling.`;
+    const result = await model.generateContent(`${systemPrompt}\n\nUser request: ${prompt}`)
+    const response = await result.response
+    const text = response.text()
 
-    let lastError = '';
-    for (const key of activeKeys) {
-      try {
-        const modelToUse = key.model || 'gemini-3.5-flash';
-        const raw = await tryGemini(key.key, modelToUse, fullPrompt);
-        const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const parsed = JSON.parse(cleaned);
-        return NextResponse.json({ ...parsed, usedKey: `${key.label} (${modelToUse})` });
-      } catch (err: unknown) {
-        lastError = err instanceof Error ? err.message : 'Key failed';
-        continue;
+    // Try to parse JSON from the response
+    let templateData
+    try {
+      // Remove markdown code blocks if present
+      const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim()
+      templateData = JSON.parse(cleanedText)
+    } catch (parseError) {
+      // If parsing fails, create a basic template
+      templateData = {
+        subject: 'Generated Email',
+        body_html: `<p>${text}</p>`,
+        body_text: text
       }
     }
 
-    return NextResponse.json({ error: `All Gemini keys failed. Last error: ${lastError}` }, { status: 500 });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Increment usage counter
+    await supabase
+      .from('gemini_keys')
+      .update({ usage_count: availableKey.usage_count + 1 })
+      .eq('id', availableKey.id)
+
+    // Log usage
+    await supabase.from('usage_logs').insert({
+      organization_id,
+      user_id: user.id,
+      action: 'ai_generation',
+      metadata: {
+        key_id: availableKey.id,
+        prompt_length: prompt.length,
+      },
+    })
+
+    return NextResponse.json({ 
+      success: true,
+      template: templateData
+    })
+  } catch (err: any) {
+    return NextResponse.json({ 
+      error: err.message || 'Failed to generate template',
+      details: err.toString()
+    }, { status: 500 })
   }
 }
