@@ -160,15 +160,16 @@ export default function Sidebar({ user, profile, currentOrg, allOrgs = [] }: Sid
     <aside style={{
       width: 230,
       height: '100vh',
-      minHeight: '100vh',
       background: 'var(--ink-900)',
       borderRight: '1px solid rgba(255,255,255,0.08)',
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
-      position: 'sticky',
+      position: 'fixed',
       top: 0,
       left: 0,
+      overflowY: 'auto',
+      overflowX: 'hidden'
     }}>
       {/* Brand Header */}
       <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>

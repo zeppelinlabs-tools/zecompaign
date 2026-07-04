@@ -66,7 +66,7 @@ export default async function DashboardLayout({
     <div className="flex h-screen bg-gray-50">
       <OrgSwitcher defaultOrgId={currentOrg.id} />
       <Sidebar user={user} profile={profile} currentOrg={currentOrg} allOrgs={allOrgs} />
-      <main className="flex-1 overflow-y-auto">
+      <main style={{ marginLeft: 230, flex: 1, overflowY: 'auto', height: '100vh' }}>
         {children}
       </main>
     </div>

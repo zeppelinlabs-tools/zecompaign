@@ -267,7 +267,6 @@ export default function AuditLogs({ organizationId, initialLogs, initialStats, i
             {/* Table Rows */}
             {logs.map((log: any, index: number) => {
               const statusColors = getStatusColor(log.status)
-              const date = new Date(log.created_at)
 
               return (
                 <div
@@ -286,8 +285,8 @@ export default function AuditLogs({ organizationId, initialLogs, initialStats, i
                 >
                   {/* Date */}
                   <div style={{ fontSize: 13, color: 'var(--text)' }}>
-                    <div style={{ fontWeight: 600 }}>{date.toLocaleDateString()}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{date.toLocaleTimeString()}</div>
+                    <div style={{ fontWeight: 600 }}>{new Date(log.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
                   </div>
 
                   {/* Recipient & Subject */}
