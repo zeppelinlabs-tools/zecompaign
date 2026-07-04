@@ -89,23 +89,33 @@ export default function BillingPanel({ organization, paymentRequests, usage, use
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Billing & Usage</h1>
-        <p className="text-gray-600">Manage your subscription and view usage</p>
+    <div style={{ padding: 28 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 4, fontFamily: 'Fraunces' }}>
+          Billing & Usage
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+          Manage your subscription and view usage
+        </p>
       </div>
 
       {/* Current Plan */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="glass" style={{ padding: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h2 className="text-xl font-semibold capitalize">{currentPlan} Plan</h2>
-            <p className="text-gray-600 text-sm">Status: {organization.billing_status}</p>
+            <h2 style={{ fontSize: 20, fontWeight: 700, textTransform: 'capitalize', fontFamily: 'Fraunces', color: 'var(--text)' }}>
+              {currentPlan} Plan
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
+              Status: <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{organization.billing_status}</span>
+            </p>
           </div>
           {currentPlan !== 'business' && (
             <button
               onClick={() => setShowUpgradeModal(true)}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              className="btn-primary"
+              style={{ padding: '10px 20px' }}
             >
               Upgrade Plan
             </button>
@@ -114,73 +124,109 @@ export default function BillingPanel({ organization, paymentRequests, usage, use
       </div>
 
       {/* Usage Stats */}
-      <div className="grid md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <p className="text-gray-600 text-sm mb-2">SMTP Accounts</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {usage.accounts} <span className="text-lg text-gray-500">/ {limits.accounts === 999999 ? '∞' : limits.accounts}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 20, marginBottom: 24 }}>
+        <div className="glass" style={{ padding: 24 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+            SMTP Accounts
           </p>
-          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+          <p style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', fontFamily: 'Fraunces' }}>
+            {usage.accounts} <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}>/ {limits.accounts === 999999 ? '∞' : limits.accounts}</span>
+          </p>
+          <div style={{ marginTop: 12, width: '100%', background: 'var(--border)', borderRadius: 4, height: 8 }}>
             <div 
-              className="bg-blue-600 h-2 rounded-full"
-              style={{ width: `${Math.min((usage.accounts / limits.accounts) * 100, 100)}%` }}
+              style={{ 
+                background: 'linear-gradient(90deg, var(--route-blue), var(--purple))', 
+                height: 8, 
+                borderRadius: 4,
+                width: `${Math.min((usage.accounts / limits.accounts) * 100, 100)}%`,
+                transition: 'width 0.3s ease'
+              }}
             />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <p className="text-gray-600 text-sm mb-2">Team Members</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {usage.members} <span className="text-lg text-gray-500">/ {limits.members === 999999 ? '∞' : limits.members}</span>
+        <div className="glass" style={{ padding: 24 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+            Team Members
           </p>
-          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+          <p style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', fontFamily: 'Fraunces' }}>
+            {usage.members} <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}>/ {limits.members === 999999 ? '∞' : limits.members}</span>
+          </p>
+          <div style={{ marginTop: 12, width: '100%', background: 'var(--border)', borderRadius: 4, height: 8 }}>
             <div 
-              className="bg-indigo-600 h-2 rounded-full"
-              style={{ width: `${Math.min((usage.members / limits.members) * 100, 100)}%` }}
+              style={{ 
+                background: 'linear-gradient(90deg, var(--stamp-teal), var(--route-blue))', 
+                height: 8, 
+                borderRadius: 4,
+                width: `${Math.min((usage.members / limits.members) * 100, 100)}%`,
+                transition: 'width 0.3s ease'
+              }}
             />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <p className="text-gray-600 text-sm mb-2">Templates</p>
-          <p className="text-3xl font-bold text-gray-900">
-            {usage.templates} <span className="text-lg text-gray-500">/ {limits.templates === 999999 ? '∞' : limits.templates}</span>
+        <div className="glass" style={{ padding: 24 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+            Templates
           </p>
-          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+          <p style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', fontFamily: 'Fraunces' }}>
+            {usage.templates} <span style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}>/ {limits.templates === 999999 ? '∞' : limits.templates}</span>
+          </p>
+          <div style={{ marginTop: 12, width: '100%', background: 'var(--border)', borderRadius: 4, height: 8 }}>
             <div 
-              className="bg-purple-600 h-2 rounded-full"
-              style={{ width: `${Math.min((usage.templates / limits.templates) * 100, 100)}%` }}
+              style={{ 
+                background: 'linear-gradient(90deg, var(--purple), var(--accent))', 
+                height: 8, 
+                borderRadius: 4,
+                width: `${Math.min((usage.templates / limits.templates) * 100, 100)}%`,
+                transition: 'width 0.3s ease'
+              }}
             />
           </div>
         </div>
       </div>
 
       {/* Payment Requests */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold">Payment Requests</h2>
+      <div className="glass" style={{ overflow: 'hidden' }}>
+        <div style={{ padding: 24, borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: 'Fraunces', color: 'var(--text)' }}>
+            Payment Requests
+          </h2>
         </div>
-        <div className="divide-y divide-gray-200">
+        <div>
           {paymentRequests.length === 0 ? (
-            <p className="p-6 text-gray-500 text-center">No payment requests yet</p>
+            <p style={{ padding: 40, color: 'var(--text-muted)', textAlign: 'center', fontSize: 14 }}>
+              No payment requests yet
+            </p>
           ) : (
             paymentRequests.map((request) => (
-              <div key={request.id} className="p-6">
-                <div className="flex items-center justify-between">
+              <div key={request.id} style={{ padding: 24, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <p className="font-medium capitalize">{request.requested_plan} Plan - {request.billing_period}</p>
-                    <p className="text-sm text-gray-600">${request.amount_paid} • {new Date(request.created_at).toLocaleDateString()}</p>
+                    <p style={{ fontWeight: 600, textTransform: 'capitalize', color: 'var(--text)', fontSize: 15 }}>
+                      {request.requested_plan} Plan - {request.billing_period}
+                    </p>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                      ${request.amount_paid} • {new Date(request.created_at).toLocaleDateString()}
+                    </p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    request.status === 'approved' ? 'bg-green-100 text-green-700' :
-                    request.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                    'bg-yellow-100 text-yellow-700'
-                  }`}>
+                  <span style={{
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: 'capitalize',
+                    ...(request.status === 'approved' ? { background: 'var(--green-glow)', color: 'var(--green)' } :
+                      request.status === 'rejected' ? { background: 'var(--red-glow)', color: 'var(--red)' } :
+                      { background: 'var(--accent-glow)', color: 'var(--accent)' })
+                  }}>
                     {request.status}
                   </span>
                 </div>
                 {request.admin_notes && (
-                  <p className="mt-2 text-sm text-gray-600">Admin notes: {request.admin_notes}</p>
+                  <p style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Admin notes: {request.admin_notes}
+                  </p>
                 )}
               </div>
             ))
@@ -190,49 +236,94 @@ export default function BillingPanel({ organization, paymentRequests, usage, use
 
       {/* Upgrade Modal */}
       {showUpgradeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8">
-            <h2 className="text-2xl font-bold mb-6">Upgrade Your Plan</h2>
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: 16
+        }}>
+          <div className="glass" style={{
+            maxWidth: 600,
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: 32
+          }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24, fontFamily: 'Fraunces', color: 'var(--text)' }}>
+              Upgrade Your Plan
+            </h2>
             
-            <form onSubmit={handleUpgradeRequest} className="space-y-6">
+            <form onSubmit={handleUpgradeRequest} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Plan</label>
-                <div className="grid grid-cols-3 gap-4">
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
+                  Select Plan
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                   {(['starter', 'pro', 'business'] as const).map((plan) => (
                     <button
                       key={plan}
                       type="button"
                       onClick={() => setSelectedPlan(plan)}
-                      className={`p-4 border-2 rounded-lg text-center ${
-                        selectedPlan === plan ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
-                      }`}
+                      style={{
+                        padding: 16,
+                        border: `2px solid ${selectedPlan === plan ? 'var(--accent)' : 'var(--border)'}`,
+                        borderRadius: 8,
+                        textAlign: 'center',
+                        background: selectedPlan === plan ? 'var(--accent-glow)' : 'white',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
                     >
-                      <p className="font-semibold capitalize">{plan}</p>
-                      <p className="text-2xl font-bold mt-2">${PLAN_PRICES[plan].monthly}</p>
-                      <p className="text-sm text-gray-600">/month</p>
+                      <p style={{ fontWeight: 600, textTransform: 'capitalize', fontSize: 14, color: 'var(--text)' }}>{plan}</p>
+                      <p style={{ fontSize: 24, fontWeight: 700, marginTop: 8, fontFamily: 'Fraunces', color: 'var(--text)' }}>
+                        ${PLAN_PRICES[plan].monthly}
+                      </p>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>/month</p>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Billing Period</label>
-                <div className="grid grid-cols-2 gap-4">
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
+                  Billing Period
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
                   <button
                     type="button"
                     onClick={() => setBillingPeriod('monthly')}
-                    className={`p-4 border-2 rounded-lg ${
-                      billingPeriod === 'monthly' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
-                    }`}
+                    style={{
+                      padding: 16,
+                      border: `2px solid ${billingPeriod === 'monthly' ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: 8,
+                      background: billingPeriod === 'monthly' ? 'var(--accent-glow)' : 'white',
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: 'var(--text)',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
                     Monthly
                   </button>
                   <button
                     type="button"
                     onClick={() => setBillingPeriod('annual')}
-                    className={`p-4 border-2 rounded-lg ${
-                      billingPeriod === 'annual' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
-                    }`}
+                    style={{
+                      padding: 16,
+                      border: `2px solid ${billingPeriod === 'annual' ? 'var(--accent)' : 'var(--border)'}`,
+                      borderRadius: 8,
+                      background: billingPeriod === 'annual' ? 'var(--accent-glow)' : 'white',
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: 'var(--text)',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
                     Annual (Save 17%)
                   </button>
@@ -240,35 +331,53 @@ export default function BillingPanel({ organization, paymentRequests, usage, use
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Billing Contact Email</label>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+                  Billing Contact Email
+                </label>
                 <input
                   type="email"
                   value={billingContact}
                   onChange={(e) => setBillingContact(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    fontSize: 14,
+                    color: 'var(--text)'
+                  }}
                   required
                 />
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="font-semibold mb-2">Total Amount: ${PLAN_PRICES[selectedPlan][billingPeriod]}</p>
-                <p className="text-sm text-gray-700">
+              <div style={{
+                background: 'var(--accent-glow)',
+                border: '1px solid var(--accent)',
+                borderRadius: 8,
+                padding: 16
+              }}>
+                <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 15, color: 'var(--text)' }}>
+                  Total Amount: ${PLAN_PRICES[selectedPlan][billingPeriod]}
+                </p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                   After submitting, you'll receive payment instructions via email. Your plan will be activated once an admin verifies your payment.
                 </p>
               </div>
 
-              <div className="flex gap-4">
+              <div style={{ display: 'flex', gap: 12 }}>
                 <button
                   type="button"
                   onClick={() => setShowUpgradeModal(false)}
-                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                  className="btn-secondary"
+                  style={{ flex: 1, padding: '12px 24px' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                  className="btn-primary"
+                  style={{ flex: 1, padding: '12px 24px' }}
                 >
                   {loading ? 'Submitting...' : 'Submit Request'}
                 </button>

@@ -1,11 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { signUp, signInWithGoogle, signInWithGithub } from '@/lib/actions/auth'
 import Link from 'next/link'
 import { Mail, GitBranch as Github, Loader2, Check } from 'lucide-react'
 
 export default function SignupPage() {
+  const searchParams = useSearchParams()
+  const inviteToken = searchParams.get('token')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -50,6 +53,11 @@ export default function SignupPage() {
     setError(null)
 
     try {
+      // Store invite token in localStorage before OAuth redirect
+      if (inviteToken) {
+        localStorage.setItem('pending_invite_token', inviteToken)
+      }
+      
       if (provider === 'google') {
         await signInWithGoogle()
       } else {
@@ -94,7 +102,7 @@ export default function SignupPage() {
             Check Your Email
           </h2>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-            We've sent you a verification link. Click it to activate your account and start using zecompaign.
+            We've sent you a verification link. Click it to activate your account{inviteToken ? ' and accept your invitation' : ''}.
           </p>
           <Link href="/login" className="btn-primary" style={{ display: 'inline-block' }}>
             Back to Login

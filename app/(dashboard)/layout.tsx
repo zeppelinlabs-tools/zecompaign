@@ -1,6 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { mapOrgResponse } from '@/lib/utils/org-mapper'
+import { cookies } from 'next/headers'
+import { OrgSwitcher } from '@/components/OrgSwitcher'
+
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function DashboardLayout({
   children,
@@ -29,11 +36,36 @@ export default async function DashboardLayout({
     user_uuid: user.id
   })
 
-  const currentOrg = organizations?.[0]
+  // Map all organizations
+  const allOrgs = organizations?.map(mapOrgResponse) || []
+  
+  if (allOrgs.length === 0) {
+    redirect('/onboarding')
+  }
 
+  // Get selected org from cookie or default to first
+  const cookieStore = await cookies()
+  const selectedOrgId = cookieStore.get('selectedOrgId')?.value
+  
+  console.log('Layout - All org IDs:', allOrgs.map((o: any) => o.id))
+  console.log('Layout - Selected from cookie:', selectedOrgId)
+  
+  // Find selected organization or use first one
+  let currentOrg = allOrgs.find((org: any) => org.id === selectedOrgId) || allOrgs[0]
+  
+  console.log('Layout - Current org:', currentOrg.id, currentOrg.name)
+  
+  // If cookie has wrong org, update it
+  if (selectedOrgId && !allOrgs.find((org: any) => org.id === selectedOrgId)) {
+    // Selected org not found, clear cookie and use first org
+    console.log('Layout - Cookie org not found, using first org')
+    currentOrg = allOrgs[0]
+  }
+  
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar user={user} profile={profile} currentOrg={currentOrg} />
+      <OrgSwitcher defaultOrgId={currentOrg.id} />
+      <Sidebar user={user} profile={profile} currentOrg={currentOrg} allOrgs={allOrgs} />
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

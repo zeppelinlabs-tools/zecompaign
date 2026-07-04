@@ -1,14 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import SavedTemplates from '@/components/SavedTemplates'
 import { mapOrgResponse } from '@/lib/utils/org-mapper'
 import { cookies } from 'next/headers'
+import OrganizationsManager from '@/components/OrganizationsManager'
 
-// Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function TemplatesPage() {
+export default async function OrganizationsPage() {
   const supabase = await createClient()
 
   const {
@@ -25,37 +24,45 @@ export default async function TemplatesPage() {
   })
 
   const allOrgs = organizations?.map(mapOrgResponse) || []
-  
+
+  if (allOrgs.length === 0) {
+    redirect('/onboarding')
+  }
+
   // Get selected org from cookie
   const cookieStore = await cookies()
   const selectedOrgId = cookieStore.get('selectedOrgId')?.value
-  
-  // Find selected organization or use first one
   const currentOrg = allOrgs.find((org: any) => org.id === selectedOrgId) || allOrgs[0]
 
-  if (!currentOrg) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Organization Found</h2>
-          <p className="text-gray-600">Please contact support.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Get templates
-  const { data: templates } = await supabase
-    .from('templates')
+  // Get organization details including member count
+  const { data: orgDetails } = await supabase
+    .from('organizations')
     .select('*')
+    .eq('id', currentOrg.id)
+    .single()
+
+  // Get organization members with profile info
+  const { data: members } = await supabase
+    .from('organization_members')
+    .select(`
+      *,
+      profiles:user_id (
+        id,
+        email,
+        full_name,
+        avatar_url
+      )
+    `)
     .eq('organization_id', currentOrg.id)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: true })
 
   return (
-    <SavedTemplates 
-      initialTemplates={templates || []}
-      organizationId={currentOrg.id}
-      userRole={currentOrg.role}
+    <OrganizationsManager
+      currentOrg={currentOrg}
+      allOrgs={allOrgs}
+      orgDetails={orgDetails}
+      members={members || []}
+      userId={user.id}
     />
   )
 }

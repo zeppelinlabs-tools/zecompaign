@@ -20,6 +20,9 @@
 - 👥 **Team Collaboration** - Role-based access control (owner, admin, member)
 - 📊 **Usage Tracking** - Monitor sent emails, templates, and team activity
 - 🔍 **Audit Logs** - Complete audit trail of all actions
+- 🛡️ **Rate Limiting** - Protection against abuse (30/min emails, 10/min tests, 20/min AI)
+- ✉️ **Unsubscribe Compliance** - CAN-SPAM & RFC 8058 compliant unsubscribe links
+- 🔒 **SMTP Encryption** - Supabase Vault integration for password encryption (infrastructure ready)
 
 ### Authentication
 - ✅ Email/Password
@@ -234,20 +237,35 @@ zecompaign/
 
 - ✅ Row Level Security (RLS) on all tables
 - ✅ Server-side auth checks
-- ✅ SMTP credentials stored in database (TODO: encrypt in production)
-- ✅ Rate limiting on API routes (TODO: implement)
+- ✅ Rate limiting on all API routes (30/min emails, 10/min tests, 20/min AI)
+- ✅ Unsubscribe compliance (CAN-SPAM & RFC 8058)
+- ✅ SMTP encryption infrastructure ready (Supabase Vault)
 - ✅ CSRF protection via Next.js
 - ✅ Secure session management via Supabase
+- ✅ Multi-tenant isolation at database level
+
+See [`docs/03-implementation/security-compliance-update.md`](docs/03-implementation/security-compliance-update.md) for implementation details.
 
 ## 📚 Documentation
 
 Complete documentation is available in the `docs/` folder:
 
+**Product & Design:**
 - **Product**: [`docs/01-product/prd.md`](docs/01-product/prd.md) - Product Requirements Document
 - **Design**: [`docs/02-design/ui-ux-design.md`](docs/02-design/ui-ux-design.md) - UI/UX Design System
 - **Database**: [`docs/02-design/database-schema.md`](docs/02-design/database-schema.md) - Complete Schema
+
+**Implementation:**
 - **Status**: [`docs/03-implementation/implementation-status.md`](docs/03-implementation/implementation-status.md) - Current Progress
+- **Plan**: [`docs/03-implementation/implementation-plan.md`](docs/03-implementation/implementation-plan.md) - Development Roadmap
 - **Testing**: [`docs/03-implementation/test-checklist.md`](docs/03-implementation/test-checklist.md) - Test Guide
+
+**Security & Compliance:**
+- **Security**: [`docs/03-implementation/security-compliance-update.md`](docs/03-implementation/security-compliance-update.md) - Security Features
+- **OAuth Setup**: [`docs/03-implementation/oauth-setup-guide.md`](docs/03-implementation/oauth-setup-guide.md) - OAuth Configuration
+
+**Deployment:**
+- **Production Checklist**: [`PRODUCTION-CHECKLIST.md`](PRODUCTION-CHECKLIST.md) - Pre-Launch Checklist
 
 See [`docs/README.md`](docs/README.md) for complete documentation structure.
 
@@ -280,11 +298,11 @@ npm run lint         # Run ESLint
 
 ```env
 # Supabase (required)
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_URL=https://[project-id].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=[anon-key]
 
-# App (required)
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Site URL (required for OAuth and unsubscribe links)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 # Optional
 GEMINI_PLATFORM_KEY=          # Platform-wide Gemini key
@@ -293,50 +311,69 @@ SYSTEM_EMAIL_FROM=            # System notification emails
 
 ## 🚢 Deployment
 
+### Quick Start
+
+See [`PRODUCTION-CHECKLIST.md`](PRODUCTION-CHECKLIST.md) for complete pre-launch checklist.
+
 ### Deploy to Vercel
 
 1. Push to GitHub
 2. Import to Vercel
-3. Add environment variables
+3. Add environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SITE_URL` (your production domain)
 4. Deploy
 
 ### Post-Deployment
 
-1. **Create First Admin User**
-   ```sql
-   INSERT INTO admin_users (user_id) 
-   VALUES ('user-uuid-from-profiles-table');
+1. **Apply Database Migrations**
+   ```bash
+   supabase db push
    ```
 
-2. **Configure OAuth Providers**
-   - Update callback URLs to production domain
-   - Add production URLs to OAuth app settings
+2. **Create First Admin User**
+   ```sql
+   INSERT INTO admin_users (user_id, role, added_by) 
+   VALUES ('[your-user-id]', 'super_admin', '[your-user-id]');
+   ```
 
-3. **Test Complete Flow**
+3. **Configure OAuth Providers**
+   - Follow [`docs/03-implementation/oauth-setup-guide.md`](docs/03-implementation/oauth-setup-guide.md)
+   - Update callback URLs to production domain
+   - Test Google and GitHub OAuth
+
+4. **Test Complete Flow**
    - Signup → Verify → Login
    - Add SMTP → Test → Send
+   - Check unsubscribe link works
    - Request upgrade → Admin approve
 
 ## 📝 Roadmap
 
-See `docs/IMPLEMENTATION-PLAN.md` for detailed roadmap.
+See `docs/03-implementation/implementation-plan.md` for detailed roadmap.
 
 ### Phase 1: MVP ✅ (Complete)
 - [x] Authentication system
 - [x] Database schema
 - [x] Server actions
-- [x] API routes
+- [x] API routes (send, test, generate, unsubscribe)
 - [x] Dashboard pages
 - [x] Core components
+- [x] Rate limiting
+- [x] Unsubscribe compliance
 
 ### Phase 2: Polish 🚧 (In Progress)
-- [ ] Component integration
-- [ ] Email sending queue
-- [ ] Admin panel
+- [x] Component integration ✅
+- [x] Admin panel ✅
+- [ ] OAuth configuration (manual setup required)
+- [ ] End-to-end testing
 - [ ] Error monitoring
 
 ### Phase 3: Advanced ⏳
 - [ ] Email scheduling
+- [ ] Bulk email queue
+- [ ] Email attachments
 - [ ] A/B testing
 - [ ] Analytics dashboard
 - [ ] Webhook integrations

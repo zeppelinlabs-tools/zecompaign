@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
@@ -24,6 +25,37 @@ export async function createClient() {
           }
         },
       },
+    }
+  )
+}
+
+/**
+ * Creates a Supabase client with service role privileges.
+ * This client bypasses Row Level Security (RLS) policies.
+ * 
+ * USE WITH EXTREME CAUTION!
+ * Only use this for:
+ * - System operations that need to bypass RLS
+ * - Operations during user onboarding before they have org membership
+ * - Admin operations that need elevated privileges
+ * 
+ * Always validate user permissions manually before using this client.
+ */
+export function createServiceRoleClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
+  }
+
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
     }
   )
 }

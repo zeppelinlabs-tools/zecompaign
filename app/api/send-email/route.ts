@@ -1,6 +1,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+
+// Helper function to generate unsubscribe token
+function generateUnsubscribeToken(email: string, orgId: string): string {
+  const data = {
+    email,
+    orgId,
+    timestamp: Date.now(),
+  }
+  return Buffer.from(JSON.stringify(data)).toString('base64')
+}
+
+// Helper function to inject unsubscribe link into HTML
+function injectUnsubscribeLink(html: string, unsubscribeUrl: string): string {
+  const unsubscribeFooter = `
+    <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #DEDAD0; font-size: 12px; color: #999; text-align: center;">
+      <p>You received this email because you subscribed to our mailing list.</p>
+      <p><a href="${unsubscribeUrl}" style="color: #3457A6; text-decoration: underline;">Unsubscribe from this list</a></p>
+    </div>
+  `
+  
+  // Try to inject before closing body tag
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${unsubscribeFooter}</body>`)
+  }
+  
+  // Otherwise append to end
+  return html + unsubscribeFooter
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -9,6 +38,16 @@ export async function POST(request: Request) {
   
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Rate limiting: 30 emails per minute per user
+  const rateLimitResult = checkRateLimit(user.id, {
+    interval: 60 * 1000, // 1 minute
+    uniqueTokenPerInterval: 30, // 30 emails per minute
+  })
+
+  if (rateLimitResult) {
+    return rateLimitResult
   }
 
   const body = await request.json()
@@ -71,6 +110,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No access to this sending account' }, { status: 403 })
   }
 
+  // Generate unsubscribe token and link
+  const unsubscribeToken = generateUnsubscribeToken(to_email, organization_id)
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const unsubscribeUrl = `${baseUrl}/api/unsubscribe/${unsubscribeToken}`
+
+  // Inject unsubscribe link into HTML body (CAN-SPAM compliance)
+  const finalBodyHtml = injectUnsubscribeLink(body_html, unsubscribeUrl)
+
   // Create transporter
   const transporter = nodemailer.createTransport({
     host: account.smtp_host,
@@ -83,14 +130,18 @@ export async function POST(request: Request) {
   })
 
   try {
-    // Send email
+    // Send email with unsubscribe header (RFC 8058 compliance)
     const info = await transporter.sendMail({
       from: `${account.name || account.email} <${account.email}>`,
       to: to_name ? `${to_name} <${to_email}>` : to_email,
       subject: subject,
-      text: body_text || '',
-      html: body_html,
+      text: body_text ? `${body_text}\n\n---\nUnsubscribe: ${unsubscribeUrl}` : '',
+      html: finalBodyHtml,
       replyTo: reply_to || account.email,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
     })
 
     // Log sent email
@@ -102,7 +153,7 @@ export async function POST(request: Request) {
         to_email,
         to_name,
         subject,
-        body_html,
+        body_html: finalBodyHtml, // Store the version with unsubscribe link
         body_text,
         sent_by: user.id,
         message_id: info.messageId,

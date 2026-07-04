@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import BillingPanel from '@/components/BillingPanel'
+import { mapOrgResponse } from '@/lib/utils/org-mapper'
+import { cookies } from 'next/headers'
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function BillingPage() {
   const supabase = await createClient()
@@ -18,7 +24,14 @@ export default async function BillingPage() {
     user_uuid: user.id
   })
 
-  const currentOrg = organizations?.[0]
+  const allOrgs = organizations?.map(mapOrgResponse) || []
+  
+  // Get selected org from cookie
+  const cookieStore = await cookies()
+  const selectedOrgId = cookieStore.get('selectedOrgId')?.value
+  
+  // Find selected organization or use first one
+  const currentOrg = allOrgs.find((org: any) => org.id === selectedOrgId) || allOrgs[0]
 
   if (!currentOrg) {
     return (
@@ -32,11 +45,21 @@ export default async function BillingPage() {
   }
 
   // Get organization details
-  const { data: orgDetails } = await supabase
+  const { data: orgDetails, error: orgError } = await supabase
     .from('organizations')
     .select('*')
     .eq('id', currentOrg.id)
     .single()
+
+  // If orgDetails is null, use currentOrg data as fallback
+  const organization = orgDetails || {
+    id: currentOrg.id,
+    name: currentOrg.name,
+    plan: currentOrg.plan,
+    billing_period: null,
+    billing_status: 'active',
+    billing_start_date: null,
+  }
 
   // Get payment requests
   const { data: paymentRequests } = await supabase
@@ -69,7 +92,7 @@ export default async function BillingPage() {
 
   return (
     <BillingPanel 
-      organization={orgDetails}
+      organization={organization}
       paymentRequests={paymentRequests || []}
       usage={{
         accounts: accountsCount || 0,

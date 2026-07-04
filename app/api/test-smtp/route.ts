@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -9,6 +10,16 @@ export async function POST(request: Request) {
   
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Rate limiting: 10 connection tests per minute per user
+  const rateLimitResult = checkRateLimit(user.id, {
+    interval: 60 * 1000, // 1 minute
+    uniqueTokenPerInterval: 10, // 10 tests per minute
+  })
+
+  if (rateLimitResult) {
+    return rateLimitResult
   }
 
   const body = await request.json()

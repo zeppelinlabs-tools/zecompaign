@@ -58,8 +58,13 @@ export default function Dashboard({ user, profile, currentOrg }: DashboardProps)
   const activeGemini = 0
   const recent: any[] = []
 
-  const canManageSmtp = currentOrg?.role !== 'member';
-  const canCompose = true;
+  // Role-based permissions
+  const role = currentOrg?.role || 'viewer'
+  const canCompose = role !== 'viewer' // member, admin, owner can compose
+  const canUseAI = role !== 'viewer' // member, admin, owner can use AI
+  const canManageSmtp = role === 'admin' || role === 'owner' // only admin and owner
+  const canManageTeam = role === 'admin' || role === 'owner' // only admin and owner
+  const canManageSettings = role === 'admin' || role === 'owner' // only admin and owner
 
   return (
     <div style={{ padding: 28 }}>

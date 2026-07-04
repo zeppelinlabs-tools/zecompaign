@@ -80,19 +80,20 @@ All CRUD operations with proper auth checks:
 - Plan limit checking
 - Access control validation
 
-### 4. API Routes (75%)
-**Status:** Mostly Complete
+### 3. API Routes (100%)
+**Status:** Complete ✅
 
-- ✅ `/api/send-email` - Send via user's SMTP
-- ✅ `/api/test-smtp` - Test connection
-- ✅ `/api/generate-template` - AI generation with Gemini
-- ⏳ `/api/unsubscribe/[token]` - Not implemented yet
+- ✅ `/api/send-email` - Send via user's SMTP with rate limiting & unsubscribe links
+- ✅ `/api/test-smtp` - Test connection with rate limiting
+- ✅ `/api/generate-template` - AI generation with Gemini and rate limiting
+- ✅ `/api/unsubscribe/[token]` - Public unsubscribe handler (CAN-SPAM compliance)
 
 **Features:**
 - Access control checks
 - Error handling
 - Usage logging
-- Rate limiting (TODO)
+- Rate limiting (30/min emails, 10/min tests, 20/min AI)
+- CAN-SPAM & RFC 8058 compliance with unsubscribe headers
 
 ### 5. Dashboard Pages (100%)
 **Status:** Complete - Server-Side Rendered
@@ -190,8 +191,42 @@ All pages:
 
 ## 🚧 In Progress / Pending
 
-### 1. Component Migration (Priority: HIGH)
-**Estimate:** 2-3 hours
+### 1. Security Enhancements (Priority: MEDIUM) ✅ COMPLETE
+**Estimate:** 3-4 hours → DONE
+
+**Rate Limiting:**
+- ✅ Created `lib/rate-limit.ts` with in-memory rate limiter
+- ✅ Applied to `/api/send-email` (30/min per user)
+- ✅ Applied to `/api/test-smtp` (10/min per user)
+- ✅ Applied to `/api/generate-template` (20/min per user)
+- ✅ Applied to `/api/unsubscribe` (10/min per IP)
+
+**SMTP Password Encryption:**
+- ✅ Created `lib/encryption.ts` with Supabase Vault integration
+- ✅ Created Vault SQL functions migration
+- ✅ Helper functions: `encryptPassword()`, `decryptPassword()`, `updatePassword()`
+- ⏳ Need to update sending-accounts actions to use encryption (see next steps)
+
+**Unsubscribe Handler:**
+- ✅ Created `/api/unsubscribe/[token]` route
+- ✅ Token-based unsubscribe system (90-day expiry)
+- ✅ Beautiful HTML response pages
+- ✅ Auto-inject unsubscribe link in all emails
+- ✅ CAN-SPAM & RFC 8058 compliance headers
+- ✅ Rate limiting to prevent abuse
+
+### 2. OAuth Configuration (Priority: HIGH) ✅ DOCUMENTED
+**Estimate:** 1-2 hours → DOCUMENTED
+
+- ✅ Created comprehensive OAuth setup guide
+- ✅ Step-by-step Google OAuth instructions
+- ✅ Step-by-step GitHub OAuth instructions
+- ✅ Troubleshooting section
+- ✅ Security best practices
+- ⏳ Requires manual configuration in Supabase dashboard (admin task)
+
+### 3. Component Migration (Priority: COMPLETED) ✅
+**Estimate:** 2-3 hours → DONE (already completed earlier)
 
 Need to update these components to use Supabase:
 

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import Dashboard from '@/components/Dashboard'
+import { redirect } from 'next/navigation'
+import UserProfile from '@/components/UserProfile'
 import { mapOrgResponse } from '@/lib/utils/org-mapper'
 import { cookies } from 'next/headers'
 
@@ -7,7 +8,7 @@ import { cookies } from 'next/headers'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function DashboardPage() {
+export default async function ProfilePage() {
   const supabase = await createClient()
 
   const {
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return null
+    redirect('/login')
   }
 
   // Get user profile
@@ -38,8 +39,13 @@ export default async function DashboardPage() {
   
   // Find selected organization or use first one
   const currentOrg = allOrgs.find((org: any) => org.id === selectedOrgId) || allOrgs[0]
-  
-  console.log('Dashboard Page - Current org:', currentOrg?.id, currentOrg?.name)
 
-  return <Dashboard user={user} profile={profile} currentOrg={currentOrg} />
+  return (
+    <UserProfile 
+      user={user}
+      profile={profile}
+      currentOrg={currentOrg}
+      allOrgs={allOrgs}
+    />
+  )
 }
