@@ -227,6 +227,12 @@ export default function TeamMembers({ organization, members, pendingInvites = []
           {/* Members List */}
           <div>
             {members.map((member, index) => {
+              // Skip members with deleted profiles
+              if (!member.profiles) {
+                console.warn('Skipping member with missing profile:', member.user_id)
+                return null
+              }
+              
               const roleColors = getRoleColor(member.role);
               const initials = getInitials(member.profiles.full_name, member.profiles.email);
               const isCurrentUser = member.user_id === currentUserId;

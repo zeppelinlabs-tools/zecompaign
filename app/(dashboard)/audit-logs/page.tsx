@@ -1,14 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import TeamMembers from '@/components/TeamMembers'
+import AuditLogs from '@/components/AuditLogs'
 import { mapOrgResponse } from '@/lib/utils/org-mapper'
 import { cookies } from 'next/headers'
+import { getAuditLogs, getAuditLogStats } from '@/lib/actions/audit'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function TeamPage() {
+export default async function AuditLogsPage() {
   const supabase = await createClient()
 
   const {
@@ -44,63 +45,45 @@ export default async function TeamPage() {
     )
   }
 
-  // Check role permission: only admin and owner can manage team
+  // Check role permission: only admin and owner can view audit logs
   if (currentOrg.role !== 'admin' && currentOrg.role !== 'owner') {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-4">You need Admin or Owner role to manage team members.</p>
+          <p className="text-gray-600 mb-4">You need Admin or Owner role to view audit logs.</p>
           <p className="text-sm text-gray-500">Current role: {currentOrg.role}</p>
         </div>
       </div>
     )
   }
 
-  // Get organization details
-  const { data: orgDetails } = await supabase
-    .from('organizations')
-    .select('*')
-    .eq('id', currentOrg.id)
-    .single()
+  // Get initial audit logs
+  const logsResult = await getAuditLogs(currentOrg.id, {
+    page: 1,
+    pageSize: 50
+  })
 
-  // Get team members
-  const { data: members } = await supabase
-    .from('organization_members')
-    .select(`
-      *,
-      profiles:user_id (
-        id,
-        email,
-        full_name,
-        avatar_url
-      )
-    `)
-    .eq('organization_id', currentOrg.id)
+  // Get statistics
+  const statsResult = await getAuditLogStats(currentOrg.id)
 
-  // Filter out members with deleted/null profiles
-  const validMembers = (members || []).filter((member: any) => member.profiles !== null)
-
-  // Get pending invitations
-  const { data: pendingInvites, error: invitesError } = await supabase
-    .from('organization_invitations')
-    .select('*, invited_by_profile:invited_by(full_name, email)')
-    .eq('organization_id', currentOrg.id)
-    .eq('status', 'pending')
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-
-  if (invitesError) {
-    console.error('Error fetching invitations:', invitesError)
+  if (logsResult.error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Logs</h2>
+          <p className="text-gray-600">{logsResult.error}</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <TeamMembers 
-      organization={orgDetails}
-      members={validMembers}
-      pendingInvites={pendingInvites || []}
-      currentUserId={user.id}
-      userRole={currentOrg.role}
+    <AuditLogs
+      organizationId={currentOrg.id}
+      initialLogs={logsResult.data || []}
+      initialStats={statsResult.data || { total: 0, queued: 0, sent: 0, failed: 0, delivered: 0 }}
+      initialPagination={logsResult.pagination || { page: 1, pageSize: 50, total: 0, totalPages: 0 }}
     />
   )
 }

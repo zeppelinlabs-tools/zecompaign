@@ -3,14 +3,17 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Briefcase, Loader2, Building2 } from 'lucide-react'
+import { Briefcase, Loader2, Building2, Mail, ArrowRight } from 'lucide-react'
 import { createOrganization } from '@/lib/actions/organizations'
+import { acceptInvitation } from '@/lib/actions/organizations'
 
 export default function OnboardingPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [orgName, setOrgName] = useState('')
+  const [pendingInvite, setPendingInvite] = useState<any>(null)
+  const [showChoice, setShowChoice] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -34,6 +37,22 @@ export default function OnboardingPage() {
         return
       }
 
+      // Check for pending invitations
+      const { data: invites } = await supabase
+        .from('organization_invitations')
+        .select('*, organization:organization_id(id, name)')
+        .eq('email', user.email)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (invites && invites.length > 0) {
+        console.log('Found pending invitation:', invites[0])
+        setPendingInvite(invites[0])
+        setShowChoice(true)
+      }
+
       // Get user's profile to pre-fill organization name
       const { data: profile } = await supabase
         .from('profiles')
@@ -55,7 +74,31 @@ export default function OnboardingPage() {
     checkOnboardingStatus()
   }, [router])
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleAcceptInvite() {
+    if (!pendingInvite?.token) return
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const result = await acceptInvitation(pendingInvite.token)
+
+      if (result.error) {
+        setError(result.error)
+        setSubmitting(false)
+        return
+      }
+
+      // Success! Redirect to dashboard
+      router.push('/dashboard')
+    } catch (err: any) {
+      console.error('Accept invitation error:', err)
+      setError(err.message || 'Failed to accept invitation')
+      setSubmitting(false)
+    }
+  }
+
+  async function handleCreateOrg(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
@@ -90,6 +133,188 @@ export default function OnboardingPage() {
       }}>
         <div className="pulse" style={{ fontSize: 14, color: 'var(--text-muted)' }}>
           Loading...
+        </div>
+      </div>
+    )
+  }
+
+  // Show invitation choice if user has pending invite
+  if (showChoice && pendingInvite) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'var(--bg-base)',
+        padding: '20px'
+      }}>
+        <div className="glass" style={{ 
+          maxWidth: '600px', 
+          width: '100%', 
+          padding: '40px',
+          borderRadius: '12px'
+        }}>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ 
+              width: '64px', 
+              height: '64px', 
+              borderRadius: '16px', 
+              background: 'linear-gradient(135deg, var(--accent), #264182)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '16px'
+            }}>
+              <Mail size={32} color="white" />
+            </div>
+            <h1 style={{ 
+              fontSize: '28px', 
+              fontWeight: 700, 
+              color: 'var(--ink-900)', 
+              marginBottom: '8px',
+              fontFamily: 'Fraunces, Georgia, serif'
+            }}>
+              You've Been Invited!
+            </h1>
+            <p style={{ fontSize: '15px', color: 'var(--ink-600)', lineHeight: 1.6 }}>
+              Choose how you want to get started with zecompaign
+            </p>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div style={{ 
+              padding: '12px 16px', 
+              background: 'rgba(179, 57, 44, 0.1)', 
+              border: '1px solid rgba(179, 57, 44, 0.3)',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              color: 'var(--red)',
+              fontSize: '14px'
+            }}>
+              {error}
+            </div>
+          )}
+
+          {/* Options */}
+          <div style={{ display: 'grid', gap: '16px', marginBottom: '24px' }}>
+            {/* Option 1: Accept Invitation */}
+            <button
+              onClick={handleAcceptInvite}
+              disabled={submitting}
+              className="glass"
+              style={{
+                padding: '24px',
+                borderRadius: '12px',
+                border: '2px solid var(--accent)',
+                background: 'rgba(52, 87, 166, 0.05)',
+                cursor: submitting ? 'wait' : 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                if (!submitting) {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+                }
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  background: 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Building2 size={24} color="white" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--ink-900)', marginBottom: '4px' }}>
+                    Join {pendingInvite.organization?.name}
+                  </h3>
+                  <p style={{ fontSize: '14px', color: 'var(--ink-600)', marginBottom: '6px' }}>
+                    Accept invitation as <strong style={{ textTransform: 'capitalize' }}>{pendingInvite.role}</strong>
+                  </p>
+                  <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 600 }}>
+                    Recommended →
+                  </p>
+                </div>
+                {submitting && (
+                  <Loader2 size={24} className="spin" style={{ color: 'var(--accent)' }} />
+                )}
+              </div>
+            </button>
+
+            {/* Option 2: Create Own Organization */}
+            <button
+              onClick={() => setShowChoice(false)}
+              disabled={submitting}
+              className="glass"
+              style={{
+                padding: '24px',
+                borderRadius: '12px',
+                border: '1px solid var(--border)',
+                background: 'white',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s ease',
+                opacity: submitting ? 0.6 : 1
+              }}
+              onMouseOver={(e) => {
+                if (!submitting) {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)'
+                }
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  background: 'var(--paper-200)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Briefcase size={24} color="var(--ink-600)" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--ink-900)', marginBottom: '4px' }}>
+                    Create My Own Organization
+                  </h3>
+                  <p style={{ fontSize: '14px', color: 'var(--ink-600)' }}>
+                    Start fresh with your own workspace
+                  </p>
+                </div>
+                <ArrowRight size={20} color="var(--ink-400)" />
+              </div>
+            </button>
+          </div>
+
+          <p style={{ 
+            fontSize: '13px', 
+            color: 'var(--text-subtle)',
+            textAlign: 'center',
+            lineHeight: 1.5
+          }}>
+            You can join multiple organizations later from your profile
+          </p>
         </div>
       </div>
     )
@@ -154,7 +379,7 @@ export default function OnboardingPage() {
         )}
 
         {/* Onboarding Form */}
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleCreateOrg}>
           <div style={{ marginBottom: '24px' }}>
             <label style={{ 
               display: 'block', 

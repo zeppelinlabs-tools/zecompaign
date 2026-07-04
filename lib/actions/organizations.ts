@@ -246,14 +246,19 @@ export async function inviteTeamMember(orgId: string, email: string, role: 'admi
       role,
       inviteUrl,
       expiresInDays: 7,
-      organizationId: orgId
+      organizationId: orgId,
+      sentBy: user.id,
+      smtpAccountId: undefined // Will use platform SMTP or org's first account
     })
 
-    if (emailResult.success) {
-      console.log('✅ Invitation email sent successfully to:', email)
+    if (emailResult.duplicate) {
+      console.log('⚠️ Invitation email already sent recently')
+      // Still return success since invitation is created
+    } else if (emailResult.success) {
+      console.log('✅ Invitation email queued successfully:', emailResult.messageId)
     } else {
-      console.error('⚠️ Email sending failed:', emailResult.error)
-      console.log('📝 Invitation created in database, but email was not sent.')
+      console.error('⚠️ Email queueing failed:', emailResult.error)
+      console.log('📝 Invitation created in database, but email was not queued.')
     }
 
   } catch (emailError) {
@@ -385,11 +390,15 @@ export async function resendInvitation(invitationId: string) {
       role: invitation.role,
       inviteUrl,
       expiresInDays: 7,
-      organizationId: invitation.organization_id
+      organizationId: invitation.organization_id,
+      sentBy: user.id,
+      smtpAccountId: undefined
     })
 
-    if (emailResult.success) {
-      console.log('✅ Invitation email resent successfully to:', invitation.email)
+    if (emailResult.duplicate) {
+      return { error: 'An invitation email was already sent recently. Please wait before resending.' }
+    } else if (emailResult.success) {
+      console.log('✅ Invitation email resent successfully:', invitation.email)
     } else {
       console.error('⚠️ Email resending failed:', emailResult.error)
       return { error: 'Failed to send email. Please try again.' }

@@ -1,12 +1,11 @@
 /**
  * Email Sender Utility
  * 
- * Sends transactional emails using zecompaign's own SMTP accounts (dogfooding!)
+ * Sends transactional emails using QStash queue for reliability
  * Falls back to platform SMTP if organization doesn't have an account configured.
  */
 
-import nodemailer from 'nodemailer'
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import { queueEmail } from '@/lib/queue/email-queue'
 
 interface InvitationEmailParams {
   to: string
@@ -16,75 +15,14 @@ interface InvitationEmailParams {
   inviteUrl: string
   expiresInDays: number
   organizationId?: string
-}
-
-/**
- * Get SMTP configuration for sending emails
- * Prioritizes: Organization SMTP > Platform SMTP > throws error
- */
-async function getSmtpConfig(organizationId?: string) {
-  const supabase = createServiceRoleClient()
-
-  // Try to get organization's SMTP account first
-  if (organizationId) {
-    const { data: orgSmtp } = await supabase
-      .from('sending_accounts')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('is_verified', true)
-      .limit(1)
-      .single()
-
-    if (orgSmtp) {
-      return {
-        host: orgSmtp.smtp_host,
-        port: orgSmtp.smtp_port,
-        secure: orgSmtp.smtp_port === 465,
-        auth: {
-          user: orgSmtp.smtp_username,
-          pass: orgSmtp.smtp_password
-        },
-        fromName: orgSmtp.from_name,
-        fromEmail: orgSmtp.from_email
-      }
-    }
-  }
-
-  // Fall back to platform SMTP from environment
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return {
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_PORT === '465',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      fromName: 'zecompaign',
-      fromEmail: process.env.SMTP_FROM || 'noreply@zecompaign.com'
-    }
-  }
-
-  throw new Error('No SMTP configuration available. Please configure an SMTP account.')
+  sentBy?: string
+  smtpAccountId?: string
 }
 
 export async function sendInvitationEmail(params: InvitationEmailParams) {
-  const { to, organizationName, inviterName, role, inviteUrl, expiresInDays, organizationId } = params
+  const { to, organizationName, inviterName, role, inviteUrl, expiresInDays, organizationId, sentBy, smtpAccountId } = params
 
-  try {
-    // Get SMTP configuration
-    const smtpConfig = await getSmtpConfig(organizationId)
-
-    // Create transporter
-    const transporter = nodemailer.createTransport({
-      host: smtpConfig.host,
-      port: smtpConfig.port,
-      secure: smtpConfig.secure,
-      auth: smtpConfig.auth
-    })
-
-    // Email subject and template
-    const subject = `You've been invited to join ${organizationName} on zecompaign`
+  const subject = `You've been invited to join ${organizationName} on zecompaign`
     const htmlBody = `
 <!DOCTYPE html>
 <html>
@@ -195,23 +133,42 @@ zecompaign Campaign Platform
 ${process.env.NEXT_PUBLIC_SITE_URL}
     `
 
-    // Send email
-    const info = await transporter.sendMail({
-      from: `"${smtpConfig.fromName}" <${smtpConfig.fromEmail}>`,
+  // Queue email for sending via QStash with duplicate prevention
+  if (!organizationId || !sentBy) {
+    console.error('⚠️ Missing organizationId or sentBy, cannot queue email')
+    return { success: false, error: 'Missing required parameters' }
+  }
+
+  try {
+    const result = await queueEmail({
+      organizationId,
+      sentBy,
       to,
       subject,
+      html: htmlBody,
       text: textBody,
-      html: htmlBody
+      smtpAccountId,
+      metadata: {
+        type: 'invitation',
+        inviter_name: inviterName,
+        role,
+        expires_days: expiresInDays
+      }
     })
 
-    console.log('✅ Invitation email sent successfully!')
-    console.log(`   To: ${to}`)
-    console.log(`   Message ID: ${info.messageId}`)
+    if (result.duplicate) {
+      console.log('📧 Invitation email already sent recently, skipping')
+      return { 
+        success: false, 
+        error: 'Invitation email already sent to this recipient',
+        duplicate: true 
+      }
+    }
 
-    return { success: true, messageId: info.messageId }
+    return result
 
   } catch (error) {
-    console.error('❌ Failed to send invitation email:', error)
+    console.error('❌ Failed to queue invitation email:', error)
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signUp, signInWithGoogle, signInWithGithub } from '@/lib/actions/auth'
 import Link from 'next/link'
 import { Mail, GitBranch as Github, Loader2, Check } from 'lucide-react'
 
-export default function SignupPage() {
+function SignupForm() {
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('token')
   const [loading, setLoading] = useState(false)
@@ -367,5 +367,24 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'var(--bg-base)'
+      }}>
+        <Loader2 size={32} className="spin" style={{ color: 'var(--accent)' }} />
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   )
 }

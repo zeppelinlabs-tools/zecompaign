@@ -1,5 +1,5 @@
 'use client';
-import { LayoutDashboard, Server, Send, Sparkles, BookMarked, Settings, Users, CreditCard, Mail, LogOut, UserCircle, Building2, Plus, ChevronDown, Check, Trash2, LogOutIcon } from 'lucide-react';
+import { LayoutDashboard, Server, Send, Sparkles, BookMarked, Settings, Users, CreditCard, Mail, LogOut, UserCircle, Building2, Plus, ChevronDown, Check, Trash2, LogOutIcon, FileText } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut } from '@/lib/actions/auth';
 import { createOrganization, leaveOrganization } from '@/lib/actions/organizations';
@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { id: '/templates', icon: BookMarked,      label: 'Templates' },
   { id: '/smtp',      icon: Server,          label: 'Sending Accounts', minRole: 'admin' },
   { id: '/team',      icon: Users,           label: 'Team', minRole: 'admin' },
+  { id: '/audit-logs', icon: FileText,       label: 'Audit Logs', minRole: 'admin' },
   { id: '/billing',   icon: CreditCard,      label: 'Billing' },
   { id: '/organizations', icon: Building2,   label: 'Organizations' },
   { id: '/profile',   icon: UserCircle,      label: 'Profile' },

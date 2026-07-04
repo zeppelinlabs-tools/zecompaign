@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getInvitationByToken, acceptInvitation } from '@/lib/actions/organizations'
 import { Mail, Building2, Shield, Check, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
@@ -390,5 +390,27 @@ export default function AcceptInvitePage() {
         </p>
       </div>
     </div>
+  )
+}
+
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-base)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Loader2 size={32} className="spin" style={{ color: 'var(--accent)', marginBottom: 12 }} />
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Loading...</p>
+        </div>
+      </div>
+    }>
+      <AcceptInviteContent />
+    </Suspense>
   )
 }
