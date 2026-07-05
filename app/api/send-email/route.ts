@@ -187,6 +187,8 @@ export async function POST(request: Request) {
       emailId: sentEmail?.id
     })
   } catch (err: any) {
+    console.error('[send-email] Error sending:', err);
+    
     // Log failed email
     await supabase
       .from('sent_emails')
@@ -203,6 +205,9 @@ export async function POST(request: Request) {
         error_message: err.message,
       })
 
-    return NextResponse.json({ error: err.message || 'Failed to send email' }, { status: 500 })
+    return NextResponse.json({ 
+      error: err.message || 'Failed to send email',
+      details: err.toString()
+    }, { status: 500 })
   }
 }
