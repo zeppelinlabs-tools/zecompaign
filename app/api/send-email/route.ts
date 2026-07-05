@@ -152,20 +152,23 @@ export async function POST(request: Request) {
       },
     })
 
-    // Log sent email
-    const { data: sentEmail } = await supabase
-      .from('sent_emails')
+    // Log sent email to audit log
+    const { data: auditLog } = await supabase
+      .from('email_audit_logs')
       .insert({
         organization_id,
-        account_id,
-        to_email,
-        to_name,
-        subject,
-        body_html: finalBodyHtml, // Store the version with unsubscribe link
-        body_text,
         sent_by: user.id,
-        message_id: info.messageId,
+        recipient_email: to_email,
+        subject,
+        smtp_account_id: account_id,
         status: 'sent',
+        sent_at: new Date().toISOString(),
+        metadata: {
+          message_id: info.messageId,
+          to_name,
+          body_html: finalBodyHtml,
+          body_text,
+        },
       })
       .select()
       .single()
@@ -177,30 +180,31 @@ export async function POST(request: Request) {
       action: 'email_sent',
       metadata: {
         account_id,
-        email_id: sentEmail?.id,
+        email_id: auditLog?.id,
       },
     })
 
     return NextResponse.json({ 
       success: true, 
       messageId: info.messageId,
-      emailId: sentEmail?.id
+      emailId: auditLog?.id
     })
   } catch (err: any) {
-    // Log failed email
+    // Log failed email to audit log
     await supabase
-      .from('sent_emails')
+      .from('email_audit_logs')
       .insert({
         organization_id,
-        account_id,
-        to_email,
-        to_name,
-        subject,
-        body_html,
-        body_text,
         sent_by: user.id,
+        recipient_email: to_email,
+        subject,
+        smtp_account_id: account_id,
         status: 'failed',
+        failed_at: new Date().toISOString(),
         error_message: err.message,
+        metadata: {
+          to_name,
+        },
       })
 
     return NextResponse.json({ 
