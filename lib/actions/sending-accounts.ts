@@ -67,34 +67,61 @@ export async function createSendingAccount(data: {
   smtp_username: string
   smtp_password: string
   use_tls: boolean
+  provider?: string // Add optional provider field
 }) {
   const supabase = await createClient()
+  
+  console.log('[createSendingAccount] Input:', {
+    organization_id: data.organization_id,
+    name: data.name,
+    email: data.email,
+    smtp_host: data.smtp_host,
+    smtp_port: data.smtp_port,
+    provider: data.provider,
+  })
+  
+  // Determine provider from host or use provided value
+  let provider = data.provider || 'custom'
+  if (!data.provider) {
+    if (data.smtp_host.includes('gmail')) provider = 'gmail'
+    else if (data.smtp_host.includes('sendgrid')) provider = 'sendgrid'
+    else if (data.smtp_host.includes('mailgun')) provider = 'mailgun'
+    else if (data.smtp_host.includes('resend')) provider = 'resend'
+    else if (data.smtp_host.includes('ses') || data.smtp_host.includes('amazonaws')) provider = 'ses'
+  }
+  
+  const insertData = {
+    organization_id: data.organization_id,
+    name: data.name,
+    provider: provider,
+    from_email: data.email, // Map email to from_email
+    from_name: data.name, // Use name as from_name
+    credential_encrypted: JSON.stringify({ // Map credentials to encrypted JSON
+      username: data.smtp_username,
+      password: data.smtp_password
+    }),
+    host: data.smtp_host, // Map smtp_host to host
+    port: data.smtp_port, // Map smtp_port to port
+    use_tls: data.use_tls,
+    active: true // Set as active by default
+  }
+  
+  console.log('[createSendingAccount] Inserting:', insertData)
   
   // Map to correct database columns
   const { data: account, error } = await supabase
     .from('sending_accounts')
-    .insert({
-      organization_id: data.organization_id,
-      name: data.name,
-      provider: 'smtp', // Default provider type
-      from_email: data.email, // Map email to from_email
-      from_name: data.name, // Use name as from_name
-      credential_encrypted: JSON.stringify({ // Map credentials to encrypted JSON
-        username: data.smtp_username,
-        password: data.smtp_password
-      }),
-      host: data.smtp_host, // Map smtp_host to host
-      port: data.smtp_port, // Map smtp_port to port
-      use_tls: data.use_tls,
-      active: true // Set as active by default
-    })
+    .insert(insertData)
     .select()
     .single()
 
   if (error) {
+    console.error('[createSendingAccount] Error:', error)
     return { error: error.message }
   }
 
+  console.log('[createSendingAccount] Success:', account)
+  
   revalidatePath('/dashboard')
   revalidatePath('/smtp')
   return { data: account }

@@ -101,6 +101,7 @@ export default function SmtpManager({ initialAccounts, organizationId, members, 
       smtp_username: form.smtp_username || form.email,
       smtp_password: form.smtp_password,
       use_tls: form.use_tls,
+      provider: form.provider, // Pass the provider from form
     })
 
     if (result.error) {
