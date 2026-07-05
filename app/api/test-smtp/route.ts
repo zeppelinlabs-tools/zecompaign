@@ -60,23 +60,25 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Parse credentials from encrypted JSON
+    let credentials
+    try {
+      credentials = JSON.parse(account.credential_encrypted)
+    } catch (err) {
+      return NextResponse.json({ error: 'Invalid account credentials format' }, { status: 500 })
+    }
+
     const transporter = nodemailer.createTransport({
-      host: account.smtp_host,
-      port: account.smtp_port,
+      host: account.host,
+      port: account.port,
       secure: account.use_tls,
       auth: {
-        user: account.smtp_username,
-        pass: account.smtp_password, // TODO: Decrypt in production
+        user: credentials.username,
+        pass: credentials.password,
       },
     })
 
     await transporter.verify()
-
-    // Update last tested timestamp
-    await supabase
-      .from('sending_accounts')
-      .update({ last_tested_at: new Date().toISOString() })
-      .eq('id', account_id)
 
     return NextResponse.json({ 
       success: true, 

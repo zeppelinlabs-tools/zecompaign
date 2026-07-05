@@ -30,17 +30,20 @@ async function handler(req: NextRequest) {
         .from('sending_accounts')
         .select('*')
         .eq('id', smtpAccountId)
-        .eq('is_verified', true)
+        .eq('active', true)
         .single()
 
       if (smtp) {
+        // Parse credentials from encrypted JSON
+        const credentials = JSON.parse(smtp.credential_encrypted)
+        
         smtpConfig = {
-          host: smtp.smtp_host,
-          port: smtp.smtp_port,
-          secure: smtp.smtp_port === 465,
+          host: smtp.host,
+          port: smtp.port,
+          secure: smtp.use_tls,
           auth: {
-            user: smtp.smtp_username,
-            pass: smtp.smtp_password
+            user: credentials.username,
+            pass: credentials.password
           },
           fromName: smtp.from_name,
           fromEmail: smtp.from_email

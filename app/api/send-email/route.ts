@@ -118,26 +118,34 @@ export async function POST(request: Request) {
   // Inject unsubscribe link into HTML body (CAN-SPAM compliance)
   const finalBodyHtml = injectUnsubscribeLink(body_html, unsubscribeUrl)
 
+  // Parse credentials from encrypted JSON
+  let credentials
+  try {
+    credentials = JSON.parse(account.credential_encrypted)
+  } catch (err) {
+    return NextResponse.json({ error: 'Invalid account credentials format' }, { status: 500 })
+  }
+
   // Create transporter
   const transporter = nodemailer.createTransport({
-    host: account.smtp_host,
-    port: account.smtp_port,
+    host: account.host,
+    port: account.port,
     secure: account.use_tls,
     auth: {
-      user: account.smtp_username,
-      pass: account.smtp_password, // TODO: Decrypt in production
+      user: credentials.username,
+      pass: credentials.password,
     },
   })
 
   try {
     // Send email with unsubscribe header (RFC 8058 compliance)
     const info = await transporter.sendMail({
-      from: `${account.name || account.email} <${account.email}>`,
+      from: `${account.from_name || account.from_email} <${account.from_email}>`,
       to: to_name ? `${to_name} <${to_email}>` : to_email,
       subject: subject,
       text: body_text ? `${body_text}\n\n---\nUnsubscribe: ${unsubscribeUrl}` : '',
       html: finalBodyHtml,
-      replyTo: reply_to || account.email,
+      replyTo: reply_to || account.from_email,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
