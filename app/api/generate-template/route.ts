@@ -29,30 +29,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  // Get active Gemini key with available quota
+  // Get active Gemini key ordered by priority
   const { data: keys, error: keysError } = await supabase
     .from('gemini_keys')
     .select('*')
     .eq('organization_id', organization_id)
-    .eq('is_active', true)
-    .order('usage_count', { ascending: true })
+    .eq('active', true)
+    .order('priority', { ascending: true })
 
   if (keysError || !keys || keys.length === 0) {
+    console.error('[generate-template] No active keys:', keysError)
     return NextResponse.json({ error: 'No active Gemini API keys found' }, { status: 400 })
   }
 
-  // Find first key with available quota
-  const availableKey = keys.find(key => 
-    !key.monthly_quota || key.usage_count < key.monthly_quota
-  )
-
-  if (!availableKey) {
-    return NextResponse.json({ error: 'All Gemini API keys have reached their quota' }, { status: 429 })
-  }
+  // Use first active key (lowest priority number = highest priority)
+  const activeKey = keys[0]
 
   try {
-    const genAI = new GoogleGenerativeAI(availableKey.api_key)
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+    const genAI = new GoogleGenerativeAI(activeKey.key_encrypted)
+    const model = genAI.getGenerativeModel({ model: activeKey.model || 'gemini-3.5-flash' })
 
     const systemPrompt = `You are an expert email copywriter. Generate a professional email template based on the user's request.
 
@@ -87,19 +82,13 @@ Do not include any markdown code blocks or additional text. Just the JSON object
       }
     }
 
-    // Increment usage counter
-    await supabase
-      .from('gemini_keys')
-      .update({ usage_count: availableKey.usage_count + 1 })
-      .eq('id', availableKey.id)
-
     // Log usage
     await supabase.from('usage_logs').insert({
       organization_id,
       user_id: user.id,
       action: 'ai_generation',
       metadata: {
-        key_id: availableKey.id,
+        key_id: activeKey.id,
         prompt_length: prompt.length,
       },
     })
