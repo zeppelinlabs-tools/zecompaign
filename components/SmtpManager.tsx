@@ -9,13 +9,14 @@ import { useRouter } from 'next/navigation'
 interface SendingAccount {
   id: string
   name: string
-  email: string
-  smtp_host: string
-  smtp_port: number
-  smtp_username: string
+  from_email: string
+  from_name: string | null
+  host: string
+  port: number
   use_tls: boolean
+  active: boolean
+  provider: string
   created_at: string
-  last_tested_at: string | null
 }
 
 interface Member {
@@ -350,24 +351,19 @@ export default function SmtpManager({ initialAccounts, organizationId, members, 
                         {account.name}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                        {account.email}
+                        {account.from_email}
                       </div>
                     </div>
                   </div>
 
                   {/* Status Badges */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                    <span className="badge badge-blue">{account.smtp_host}</span>
+                    <span className="badge badge-blue">{account.host}:{account.port}</span>
+                    <span className="badge badge-purple">{account.provider}</span>
+                    {account.active && <span className="badge badge-green"><CheckCircle size={8} /> Active</span>}
                     {status === 'ok' && <span className="badge badge-green"><CheckCircle size={8} /> Tested</span>}
                     {status === 'fail' && <span className="badge badge-red"><XCircle size={8} /> Failed</span>}
                   </div>
-
-                  {/* Last Tested */}
-                  {account.last_tested_at && (
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-                      Last tested: {new Date(account.last_tested_at).toLocaleString()}
-                    </div>
-                  )}
                 </div>
 
                 {/* Actions */}
