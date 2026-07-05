@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import ComposeEmail from '@/components/ComposeEmail'
 import { mapOrgResponse } from '@/lib/utils/org-mapper'
 import { cookies } from 'next/headers'
+import { getAccessibleAccounts } from '@/lib/actions/sending-accounts'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -57,11 +58,9 @@ export default async function ComposePage() {
     )
   }
 
-  // Get accessible SMTP accounts
-  const { data: accounts } = await supabase.rpc('get_user_sending_accounts', {
-    org_uuid: currentOrg.id,
-    user_uuid: user.id
-  })
+  // Get accessible SMTP accounts using the action function
+  const accountsResult = await getAccessibleAccounts(currentOrg.id)
+  const accounts = accountsResult.data || []
 
   // Get templates
   const { data: templates } = await supabase

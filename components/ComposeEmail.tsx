@@ -20,10 +20,13 @@ interface EmailTemplate {
 interface SmtpAccount {
   id: string
   name: string
-  email: string
-  smtp_host: string
-  smtp_port: number
+  from_email: string
+  from_name: string | null
+  host: string
+  port: number
   use_tls: boolean
+  active: boolean
+  provider: string
 }
 
 interface Props {
@@ -386,7 +389,7 @@ export default function ComposeEmail({ smtpAccounts, templates, organizationId }
               }}
             >
               {smtpAccounts.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
+                <option key={s.id} value={s.id}>{s.name} ({s.from_email})</option>
               ))}
             </select>
             {smtp && (
