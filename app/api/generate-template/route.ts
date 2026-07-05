@@ -38,7 +38,6 @@ export async function POST(request: Request) {
     .order('priority', { ascending: true })
 
   if (keysError || !keys || keys.length === 0) {
-    console.error('[generate-template] No active keys:', keysError)
     return NextResponse.json({ error: 'No active Gemini API keys found' }, { status: 400 })
   }
 

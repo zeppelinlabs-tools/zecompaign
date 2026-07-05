@@ -71,15 +71,6 @@ export async function createSendingAccount(data: {
 }) {
   const supabase = await createClient()
   
-  console.log('[createSendingAccount] Input:', {
-    organization_id: data.organization_id,
-    name: data.name,
-    email: data.email,
-    smtp_host: data.smtp_host,
-    smtp_port: data.smtp_port,
-    provider: data.provider,
-  })
-  
   // Determine provider from host or use provided value
   let provider = data.provider || 'custom'
   if (!data.provider) {
@@ -106,8 +97,6 @@ export async function createSendingAccount(data: {
     active: true // Set as active by default
   }
   
-  console.log('[createSendingAccount] Inserting:', insertData)
-  
   // Map to correct database columns
   const { data: account, error } = await supabase
     .from('sending_accounts')
@@ -116,11 +105,8 @@ export async function createSendingAccount(data: {
     .single()
 
   if (error) {
-    console.error('[createSendingAccount] Error:', error)
     return { error: error.message }
   }
-
-  console.log('[createSendingAccount] Success:', account)
   
   revalidatePath('/dashboard')
   revalidatePath('/smtp')

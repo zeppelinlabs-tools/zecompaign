@@ -277,10 +277,7 @@ export default function ComposeEmail({ smtpAccounts, templates, organizationId }
         }),
       });
       
-      console.log('[ComposeEmail] Send response status:', res.status);
-      
       const data = await res.json();
-      console.log('[ComposeEmail] Send response data:', data);
 
       if (data.success) {
         let finalMessage = `Email sent successfully to ${firstRecipient.email} via ${smtp.name}.`;
@@ -305,12 +302,10 @@ export default function ComposeEmail({ smtpAccounts, templates, organizationId }
         // Refresh page to show updated stats
         router.refresh();
       } else {
-        console.error('[ComposeEmail] Send failed:', data.error);
         toast.error(data.error || 'Failed to send email');
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Network error';
-      console.error('[ComposeEmail] Send exception:', e);
       toast.error(msg);
     }
     setSending(false);
