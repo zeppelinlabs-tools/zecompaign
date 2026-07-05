@@ -21,15 +21,23 @@ export async function getGeminiKeys(orgId: string) {
 
 export async function createGeminiKey(data: {
   organization_id: string
-  name: string
+  label: string
   api_key: string
   monthly_quota?: number
+  model?: string
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
   const { data: key, error } = await supabase
     .from('gemini_keys')
-    .insert(data)
+    .insert({
+      organization_id: data.organization_id,
+      label: data.label,
+      key_encrypted: data.api_key, // Map api_key to key_encrypted
+      model: data.model || 'gemini-3.5-flash',
+      active: true
+    })
     .select()
     .single()
 
@@ -38,20 +46,28 @@ export async function createGeminiKey(data: {
   }
 
   revalidatePath('/dashboard')
+  revalidatePath('/settings')
   return { data: key }
 }
 
 export async function updateGeminiKey(id: string, updates: {
-  name?: string
+  label?: string
   api_key?: string
-  monthly_quota?: number
-  is_active?: boolean
+  model?: string
+  active?: boolean
 }) {
   const supabase = await createClient()
   
+  // Map to correct database columns
+  const dbUpdates: any = {}
+  if (updates.label !== undefined) dbUpdates.label = updates.label
+  if (updates.api_key !== undefined) dbUpdates.key_encrypted = updates.api_key
+  if (updates.model !== undefined) dbUpdates.model = updates.model
+  if (updates.active !== undefined) dbUpdates.active = updates.active
+  
   const { error } = await supabase
     .from('gemini_keys')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', id)
 
   if (error) {
@@ -59,6 +75,7 @@ export async function updateGeminiKey(id: string, updates: {
   }
 
   revalidatePath('/dashboard')
+  revalidatePath('/settings')
   return { success: true }
 }
 
@@ -75,6 +92,7 @@ export async function deleteGeminiKey(id: string) {
   }
 
   revalidatePath('/dashboard')
+  revalidatePath('/settings')
   return { success: true }
 }
 
@@ -96,13 +114,13 @@ export async function incrementGeminiUsage(keyId: string) {
 export async function getActiveGeminiKey(orgId: string) {
   const supabase = await createClient()
   
-  // Get active keys with available quota
+  // Get active keys
   const { data, error } = await supabase
     .from('gemini_keys')
     .select('*')
     .eq('organization_id', orgId)
-    .eq('is_active', true)
-    .order('usage_count', { ascending: true })
+    .eq('active', true)
+    .order('priority', { ascending: true })
 
   if (error) {
     return { error: error.message }
@@ -112,14 +130,5 @@ export async function getActiveGeminiKey(orgId: string) {
     return { error: 'No active Gemini API keys found' }
   }
 
-  // Find first key with available quota
-  const availableKey = data.find(key => 
-    !key.monthly_quota || key.usage_count < key.monthly_quota
-  )
-
-  if (!availableKey) {
-    return { error: 'All Gemini API keys have reached their quota' }
-  }
-
-  return { data: availableKey }
+  return { data: data[0] }
 }

@@ -8,10 +8,10 @@ import { useRouter } from 'next/navigation'
 
 interface GeminiKey {
   id: string
-  name: string
-  is_active: boolean
-  usage_count: number
-  monthly_quota: number | null
+  label: string
+  active: boolean
+  priority: number
+  model: string
 }
 
 interface Template {
@@ -43,7 +43,7 @@ export default function AITemplateGenerator({ geminiKeys, templates, organizatio
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'preview' | 'html'>('preview')
 
-  const activeKeys = geminiKeys.filter(k => k.is_active)
+  const activeKeys = geminiKeys.filter(k => k.active)
 
   async function generate() {
     if (!prompt.trim()) {

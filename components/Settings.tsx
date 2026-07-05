@@ -82,9 +82,9 @@ export default function Settings({ geminiKeys, members, sendingAccounts, account
     setSavingKey(true);
     const result = await createGeminiKey({
       organization_id: organizationId,
-      name: label.trim(),
+      label: label.trim(),
       api_key: keyVal.trim(),
-      monthly_quota: 10000, // Default quota
+      model: model,
     });
 
     if (result.error) {
@@ -113,7 +113,7 @@ export default function Settings({ geminiKeys, members, sendingAccounts, account
   }
 
   async function toggleKeyActive(id: string, currentActive: boolean) {
-    const result = await updateGeminiKey(id, { is_active: !currentActive });
+    const result = await updateGeminiKey(id, { active: !currentActive });
     
     if (result.error) {
       toast.error(result.error);
